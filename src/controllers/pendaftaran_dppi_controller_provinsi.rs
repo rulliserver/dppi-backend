@@ -1093,10 +1093,9 @@ fn create_excel_workbook(data: &[PendaftaranDppiWithProvinsi]) -> Result<Vec<u8>
         worksheet.write_string(row, 20, &item.kepala_divisi_aktualisasi_2)?;
         worksheet.write_string(row, 21, &item.kepala_divisi_kominfo_1)?;
         worksheet.write_string(row, 22, &item.kepala_divisi_kominfo_2)?;
-
         // Created By & Updated By
-        worksheet.write_number(row, 23, item.created_by.unwrap_or(0) as f64)?;
-        worksheet.write_number(row, 24, item.updated_by.unwrap_or(0) as f64)?;
+        worksheet.write_string(row, 23, item.created_by.as_deref().unwrap_or(""))?;
+        worksheet.write_string(row, 24, item.updated_by.as_deref().unwrap_or(""))?;
     }
 
     // Add summary sheet

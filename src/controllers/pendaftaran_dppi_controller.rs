@@ -1140,8 +1140,8 @@ fn create_excel_workbook(data: &[PendaftaranDppiWithKabupaten]) -> Result<Vec<u8
         worksheet.write_string(row, 23, &item.kepala_bidang_kominfo_2)?;
 
         // Created By & Updated By
-        worksheet.write_number(row, 24, item.created_by.unwrap_or(0) as f64)?;
-        worksheet.write_number(row, 25, item.updated_by.unwrap_or(0) as f64)?;
+        worksheet.write_string(row, 23, item.created_by.as_deref().unwrap_or(""))?;
+        worksheet.write_string(row, 24, item.updated_by.as_deref().unwrap_or(""))?;
     }
 
     // Add summary sheet

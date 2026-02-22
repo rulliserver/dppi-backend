@@ -15,8 +15,8 @@ pub struct Regulasi {
     pub nama_regulasi: String,
     pub icon_regulasi: String,   // images
     pub file_regulasi: String,   // pdf
-    pub created_by: i32,         // dari claims.user_id
-    pub updated_by: Option<i32>, // dari claims.user_id
+    pub created_by: String,         // dari claims.user_id
+    pub updated_by: Option<String>, // dari claims.user_id
 }
 
 // Response struct
@@ -260,8 +260,8 @@ pub async fn create_regulasi(
         .bind(&nama_regulasi)
         .bind(&icon_regulasi_path)
         .bind(&file_regulasi_path)
-        .bind(&claims.user_id)
-        .bind(&claims.user_id)
+        .bind(claims.user_id.clone())
+        .bind(claims.user_id.clone())
         .execute(pool.get_ref())
         .await;
 

@@ -905,8 +905,8 @@ struct Regulasi {
     icon_regulasi: String,
     file_regulasi: String,
     created_at: DateTime<Utc>,
-    created_by: i32,
-    role: String,
+    created_by: String,
+
 }
 
 #[get("/api/regulasi")]
@@ -924,16 +924,16 @@ pub async fn get_regulasi(
         // tanpa pencarian
         let regulasi = sqlx::query_as::<_, Regulasi>(
             "SELECT
-        r.id,
-        r.nama_regulasi,
-        r.icon_regulasi,
-        r.file_regulasi,
-        r.created_at,
-        r.created_by,
-        (SELECT u.role FROM users u WHERE u.id = r.created_by LIMIT 1) as role
-     FROM regulasi r
-     ORDER BY r.id DESC
-     LIMIT ? OFFSET ?",
+                r.id,
+                r.nama_regulasi,
+                r.icon_regulasi,
+                r.file_regulasi,
+                r.created_at,
+                r.created_by
+
+             FROM regulasi r
+             ORDER BY r.id DESC
+             LIMIT ? OFFSET ?",
         )
         .bind(per_page as i32)
         .bind(offset as i32)
@@ -956,8 +956,7 @@ pub async fn get_regulasi(
                 r.icon_regulasi,
                 r.file_regulasi,
                 r.created_at,
-                r.created_by,
-                (SELECT u.role FROM users u WHERE u.id = r.created_by LIMIT 1) as role
+                r.created_by
              FROM regulasi r
              WHERE r.nama_regulasi LIKE ? OR r.file_regulasi LIKE ?
              ORDER BY r.id DESC

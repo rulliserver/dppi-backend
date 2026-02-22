@@ -44,8 +44,8 @@ pub struct PendaftaranDppiWithKabupaten {
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub created_by: Option<i32>,
-    pub updated_by: Option<i32>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
 
     // Tambahan dari join
     pub nama_provinsi: Option<String>,
