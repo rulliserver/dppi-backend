@@ -230,6 +230,7 @@ struct Pagination {
     page: Option<u32>,
     limit: Option<u32>,
     q: Option<String>,
+    per_page: Option<u32>,
 }
 
 #[get("/api/post")]
@@ -914,7 +915,7 @@ pub async fn get_regulasi(
     web::Query(pagination): web::Query<Pagination>,
 ) -> Result<impl Responder, Error> {
     let page = pagination.page.unwrap_or(1).max(1);
-    let per_page = 8;
+    let per_page = pagination.per_page.unwrap_or(8).max(1).min(100); // baca dari parameter, dengan batasan
     let offset = (page - 1) * per_page;
     let keyword = pagination.q.unwrap_or_default();
     let keyword_like = format!("%{}%", keyword);
@@ -923,17 +924,16 @@ pub async fn get_regulasi(
         // tanpa pencarian
         let regulasi = sqlx::query_as::<_, Regulasi>(
             "SELECT
-                r.id,
-                r.nama_regulasi,
-                r.icon_regulasi,
-                r.file_regulasi,
-                r.created_at,
-                r.created_by,
-                u.role
-             FROM regulasi r
-             LEFT JOIN users u ON u.id = r.created_by
-             ORDER BY r.id DESC
-             LIMIT ? OFFSET ?",
+        r.id,
+        r.nama_regulasi,
+        r.icon_regulasi,
+        r.file_regulasi,
+        r.created_at,
+        r.created_by,
+        (SELECT u.role FROM users u WHERE u.id = r.created_by LIMIT 1) as role
+     FROM regulasi r
+     ORDER BY r.id DESC
+     LIMIT ? OFFSET ?",
         )
         .bind(per_page as i32)
         .bind(offset as i32)
@@ -957,9 +957,8 @@ pub async fn get_regulasi(
                 r.file_regulasi,
                 r.created_at,
                 r.created_by,
-                u.role
+                (SELECT u.role FROM users u WHERE u.id = r.created_by LIMIT 1) as role
              FROM regulasi r
-             LEFT JOIN users u ON u.id = r.created_by
              WHERE r.nama_regulasi LIKE ? OR r.file_regulasi LIKE ?
              ORDER BY r.id DESC
              LIMIT ? OFFSET ?",
