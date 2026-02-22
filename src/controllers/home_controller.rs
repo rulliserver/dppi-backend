@@ -644,7 +644,7 @@ pub async fn get_profil(pool: web::Data<MySqlPool>) -> Result<impl Responder, Er
 #[derive(Serialize, FromRow, Debug)]
 struct PelaksanaPusat {
     id: i32,
-    id_pdp: Option<i32>,
+    id_pdp: Option<String>,
     nama_lengkap: String,
     photo: Option<String>,
     jabatan: String,
@@ -709,7 +709,7 @@ pub async fn pelaksana_provinsi(pool: web::Data<MySqlPool>) -> impl Responder {
 #[derive(Debug, Serialize, FromRow)]
 struct PelaksanaProvinsiById {
     id: i32,
-    id_pdp: Option<i32>,
+    id_pdp: Option<String>,
     id_provinsi: Option<i32>,
     nama_lengkap: String,
     photo: Option<String>,
@@ -849,7 +849,7 @@ pub async fn get_pelaksana_kabupaten_names(
 #[derive(Debug, Serialize, FromRow)]
 struct PelaksanaKabupatenById {
     id: i32,
-    id_pdp: Option<i32>,
+    id_pdp: Option<String>,
     id_kabupaten: Option<i32>,
     nama_lengkap: String,
     photo: Option<String>,

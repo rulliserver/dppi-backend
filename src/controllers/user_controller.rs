@@ -1270,7 +1270,7 @@ pub async fn get_all_user(
 pub async fn update_user_by_id(
     req: HttpRequest,
     pool: web::Data<MySqlPool>,
-    path: web::Path<i32>,
+    path: web::Path<String>,
     mut multipart: Multipart,
 ) -> Result<impl Responder, Error> {
     let claims =
@@ -1286,7 +1286,7 @@ pub async fn update_user_by_id(
     let user_old = sqlx::query_as::<_, User>(
         "SELECT id, name, email, role, password, address, avatar, phone, email_verified_at, remember_token, id_pdp, id_provinsi, id_kabupaten, created_at FROM users WHERE id = ?"
     )
-    .bind(id)
+    .bind(id.clone())
     .fetch_one(pool.get_ref())
     .await
     .map_err(|e| {
@@ -1682,6 +1682,7 @@ pub async fn new_add_user(
                 })?;
                 avatar_path = Some(filename);
             }
+
             "name" => {
                 let data = field.try_collect::<Vec<_>>().await.map_err(|e| {
                     actix_web::error::ErrorBadRequest(format!("Gagal membaca name: {}", e))
@@ -1784,14 +1785,15 @@ pub async fn new_add_user(
         }
         _ => None,
     };
-
+    let new_id = generate_short_uuid();
     // Insert user ke database
     sqlx::query(
         r#"
-        INSERT INTO users (name, password, email, role, address, avatar, phone, id_pdp, id_provinsi, id_kabupaten)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (id, name, password, email, role, address, avatar, phone, id_pdp, id_provinsi, id_kabupaten)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
+    .bind(new_id.clone())
     .bind(&form.name)
     .bind(hashed_password.unwrap_or_default())
     .bind(&form.email)
@@ -1812,4 +1814,9 @@ pub async fn new_add_user(
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "User berhasil ditambahkan"
     })))
+}
+
+fn generate_short_uuid() -> String {
+    let raw = Uuid::new_v4().simple().to_string();
+    raw[..10].to_uppercase()
 }

@@ -8,7 +8,7 @@ pub struct Pengumuman {
     pub id: i32,
     pub image: String,
     pub link: Option<String>,
-    pub created_by: i32,
+    pub created_by: String,
     pub created_at: DateTime<chrono::Local>,
     pub updated_at: DateTime<chrono::Local>,
 }

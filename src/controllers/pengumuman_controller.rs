@@ -23,11 +23,11 @@ pub struct UpdateAnnouncementResponse {
 #[put("/api/adminpanel/pengumuman/{id}")]
 pub async fn put_announcement(
     req: HttpRequest,
-    path: web::Path<i64>,
+    path: web::Path<i32>,
     pool: web::Data<MySqlPool>,
     mut payload: Multipart,
 ) -> Result<impl Responder, Error> {
-    let id = path.into_inner();
+    let id_pengumuman = path.into_inner();
 
     // Verify JWT and check permissions
     let claims =
@@ -40,11 +40,14 @@ pub async fn put_announcement(
     }
 
     // Check if announcement exists
-    let existing_announcement: Option<Pengumuman> =
-        sqlx::query_as!(Pengumuman, "SELECT * FROM pengumuman WHERE id = ?", id)
-            .fetch_optional(pool.as_ref())
-            .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+    let existing_announcement: Option<Pengumuman> = sqlx::query_as!(
+        Pengumuman,
+        "SELECT * FROM pengumuman WHERE id = ?",
+        id_pengumuman as i32
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
 
     if existing_announcement.is_none() {
         return Ok(HttpResponse::NotFound().json(serde_json::json!({
@@ -145,7 +148,7 @@ pub async fn put_announcement(
         "UPDATE pengumuman SET image = ?, link = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         image_to_update,
         link_to_update,
-        id
+        id_pengumuman
     )
     .execute(pool.as_ref())
     .await
@@ -173,7 +176,7 @@ pub async fn put_announcement(
     Ok(HttpResponse::Ok().json(UpdateAnnouncementResponse {
         success: true,
         message: "Pengumuman berhasil diperbarui".to_string(),
-        id: id as i32,
+        id: id_pengumuman as i32,
     }))
 }
 
