@@ -6,6 +6,8 @@ use actix_web::middleware::Logger;
 use actix_web::web::{FormConfig, JsonConfig};
 use actix_web::{App, HttpServer, web};
 use dotenv::dotenv;
+use env_logger;
+use log::{info, error};
 
 // use crate::controllers::image_optimizer::optimize_image;
 
@@ -18,18 +20,36 @@ mod utils;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    log::info!("starting up...");
+
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,actix_web=info"),
+    )
+    .format(|buf, record| {
+        use std::io::Write;
+        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        writeln!(
+            buf,
+            "[{} {} {}] {}",
+            ts,
+            record.level(),
+            record.target(),
+            record.args()
+        )
+    })
+    .init();
+
+    info!("starting up...");
+
     let pool = match db::establish_connection().await {
         Ok(pool) => pool,
         Err(e) => {
-            log::error!("Gagal inisialisasi pool database: {:?}", e);
+            error!("Gagal inisialisasi pool database: {:?}", e);
             std::process::exit(1);
         }
     };
 
     HttpServer::new(move || {
-        let cors = Cors::default()
+	let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
@@ -55,13 +75,14 @@ async fn main() -> std::io::Result<()> {
         // Untuk raw payload
         let payload_config = web::PayloadConfig::new(50 * 1024 * 1024).limit(50 * 1024 * 1024);
 
+
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(json_config)
             .app_data(form_config)
             .app_data(payload_config)
             .wrap(cors)
-            .wrap(Logger::default())
+            .wrap(Logger::new(r#"%a "%r" %s %b %T "%{User-Agent}i""#))
             .service(Files::new("/uploads", "./uploads").show_files_listing())
             .service(controllers::preview::preview)
             //home_controller
@@ -105,7 +126,6 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::auth_controller::forgot_password)
             .service(controllers::auth_controller::reset_password)
             .service(controllers::auth_controller::logout)
-
             // .service(optimize_image)
             .service(controllers::dashboard_controller::get_contact)
             .service(controllers::dashboard_controller::delete_contact)
