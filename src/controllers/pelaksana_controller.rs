@@ -512,7 +512,7 @@ pub async fn update_pelaksana_pusat(
     // tri-state utk id_pdp & photo:
     // present(false/true), value(None/Some)
     let mut id_pdp_present = false;
-    let mut id_pdp_value: Option<i32> = None;
+    let mut id_pdp_value: Option<String> = None;
 
     let mut nama_lengkap: Option<String> = None; // presence = Some
     let mut jabatan: Option<String> = None; // presence = Some
@@ -544,7 +544,7 @@ pub async fn update_pelaksana_pusat(
                 id_pdp_value = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    v.parse::<String>().ok()
                 };
             }
             "photo" => {
@@ -1100,7 +1100,7 @@ pub async fn update_pelaksana_provinsi(
 
     let id = path.into_inner();
     let mut id_pdp_present = false;
-    let mut id_pdp_value: Option<i32> = None;
+    let mut id_pdp_value: Option<String> = None;
 
     let mut id_provinsi_present = false;
     let mut id_provinsi_value: Option<i32> = None;
@@ -1135,7 +1135,7 @@ pub async fn update_pelaksana_provinsi(
                 id_pdp_value = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    v.parse::<String>().ok()
                 };
             }
             "id_provinsi" => {
@@ -1989,7 +1989,7 @@ pub async fn update_pelaksana_kabupaten(
     let id = path.into_inner();
 
     let mut id_pdp_present = false;
-    let mut id_pdp_value: Option<i32> = None;
+    let mut id_pdp_value: Option<String> = None;
 
     let mut id_kabupaten_present = false;
     let mut id_kabupaten_value: Option<i32> = None;
@@ -2027,7 +2027,7 @@ pub async fn update_pelaksana_kabupaten(
                 id_pdp_value = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    v.parse::<String>().ok()
                 };
             }
             "id_kabupaten" => {
