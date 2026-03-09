@@ -7,7 +7,7 @@ use actix_web::web::{FormConfig, JsonConfig};
 use actix_web::{App, HttpServer, web};
 use dotenv::dotenv;
 use env_logger;
-use log::{info, error};
+use log::{error, info};
 
 // use crate::controllers::image_optimizer::optimize_image;
 
@@ -49,32 +49,30 @@ async fn main() -> std::io::Result<()> {
     };
 
     HttpServer::new(move || {
-	let cors = Cors::default()
+        let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
             .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
             .supports_credentials()
             .max_age(3600);
-
         let json_config = JsonConfig::default()
-            .limit(50 * 1024 * 1024) // 50MB untuk JSON
-            .content_type_required(false) // Kadang header content-type tidak tepat
+            .limit(50 * 1024 * 1024)
+            .content_type_required(false)
             .error_handler(|err, _req| {
                 log::error!("JSON payload error: {}", err);
                 actix_web::error::ErrorBadRequest(format!("Payload error: {}", err))
             });
 
         // Untuk Form data
-        let form_config = FormConfig::default()
-            .limit(50 * 1024 * 1024) // 50MB untuk form
-            .error_handler(|err, _req| {
-                log::error!("Form payload error: {}", err);
-                actix_web::error::ErrorBadRequest(format!("Form error: {}", err))
-            });
+        let form_config =
+            FormConfig::default()
+                .limit(50 * 1024 * 1024)
+                .error_handler(|err, _req| {
+                    log::error!("Form payload error: {}", err);
+                    actix_web::error::ErrorBadRequest(format!("Form error: {}", err))
+                });
 
-        // Untuk raw payload
         let payload_config = web::PayloadConfig::new(50 * 1024 * 1024).limit(50 * 1024 * 1024);
-
 
         App::new()
             .app_data(web::Data::new(pool.clone()))

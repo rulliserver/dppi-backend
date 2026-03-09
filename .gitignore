@@ -1,6 +1,4 @@
 /target
 /uploads
-/src/main.rs
-/src/db.rs
-/.env
+.env
 #

@@ -718,7 +718,7 @@ pub async fn login(
         .path("/")
         .http_only(true)
         .secure(false) // false untuk development (HTTP)
-        .same_site(SameSite::Lax) // Lax untuk cross-origin
+        .same_site(SameSite::Lax)
         .max_age(Duration::days(4))
         .finish();
 
