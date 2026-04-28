@@ -717,7 +717,7 @@ pub async fn login(
     let access_cookie = Cookie::build("access_token", token.clone())
         .path("/")
         .http_only(true)
-        .secure(false) // false untuk development (HTTP)
+        .secure(false) 
         .same_site(SameSite::Lax)
         .max_age(Duration::days(4))
         .finish();
@@ -1074,7 +1074,6 @@ async fn send_reset_password_email(to: &str, name: &str, reset_url: &str) -> Res
 
 #[post("/api/logout")]
 pub async fn logout() -> Result<impl Responder, Error> {
-    // ✅ FIXED LOGOUT COOKIE (harus sama persis dengan login)
     let access_cookie = Cookie::build("access_token", "")
         .path("/")
         .http_only(true)

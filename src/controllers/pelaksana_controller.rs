@@ -428,7 +428,7 @@ pub async fn create_pelaksana_pusat(
 
     let mut nama_lengkap: Option<String> = None;
     let mut jabatan: Option<String> = None;
-    let mut id_pdp_val: Option<i32> = None;
+    let mut id_pdp_val: Option<String> = None;
     let mut photo_path: Option<String> = None;
 
     while let Some(field) = payload
@@ -454,7 +454,7 @@ pub async fn create_pelaksana_pusat(
                 id_pdp_val = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    Some(v)
                 };
             }
             "photo" => {
@@ -512,7 +512,7 @@ pub async fn update_pelaksana_pusat(
     // tri-state utk id_pdp & photo:
     // present(false/true), value(None/Some)
     let mut id_pdp_present = false;
-    let mut id_pdp_value: Option<i32> = None;
+    let mut id_pdp_value: Option<String> = None;
 
     let mut nama_lengkap: Option<String> = None; // presence = Some
     let mut jabatan: Option<String> = None; // presence = Some
@@ -544,7 +544,7 @@ pub async fn update_pelaksana_pusat(
                 id_pdp_value = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    Some(v)
                 };
             }
             "photo" => {
@@ -992,7 +992,7 @@ pub async fn create_pelaksana_provinsi(
 
     let mut nama_lengkap: Option<String> = None;
     let mut jabatan: Option<String> = None;
-    let mut id_pdp_val: Option<i32> = None;
+    let mut id_pdp_val: Option<String> = None;
     let mut id_provinsi_val: Option<i32> = None;
     let mut photo_path: Option<String> = None;
 
@@ -1019,7 +1019,7 @@ pub async fn create_pelaksana_provinsi(
                 id_pdp_val = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    Some(v)
                 };
             }
             "id_provinsi" => {
@@ -1100,7 +1100,7 @@ pub async fn update_pelaksana_provinsi(
 
     let id = path.into_inner();
     let mut id_pdp_present = false;
-    let mut id_pdp_value: Option<i32> = None;
+    let mut id_pdp_value: Option<String> = None;
 
     let mut id_provinsi_present = false;
     let mut id_provinsi_value: Option<i32> = None;
@@ -1135,7 +1135,7 @@ pub async fn update_pelaksana_provinsi(
                 id_pdp_value = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                    Some(v)
                 };
             }
             "id_provinsi" => {
@@ -1865,7 +1865,7 @@ pub async fn create_pelaksana_kabupaten(
 
     let mut nama_lengkap: Option<String> = None;
     let mut jabatan: Option<String> = None;
-    let mut id_pdp_val: Option<i32> = None;
+    let mut id_pdp_val: Option<String> = None;
     let mut id_kabupaten_val: Option<i32> = None;
     let mut id_provinsi_val: Option<i32> = None; // opsional: kalau dikirim
     let mut photo_path: Option<String> = None;
@@ -1893,7 +1893,7 @@ pub async fn create_pelaksana_kabupaten(
                 id_pdp_val = if v.is_empty() {
                     None
                 } else {
-                    v.parse::<i32>().ok()
+                   Some(v)
                 };
             }
             "id_kabupaten" => {
@@ -1989,7 +1989,7 @@ pub async fn update_pelaksana_kabupaten(
     let id = path.into_inner();
 
     let mut id_pdp_present = false;
-    let mut id_pdp_value: Option<i32> = None;
+    let mut id_pdp_value: Option<String> = None;
 
     let mut id_kabupaten_present = false;
     let mut id_kabupaten_value: Option<i32> = None;
@@ -2024,11 +2024,7 @@ pub async fn update_pelaksana_kabupaten(
             "id_pdp" => {
                 id_pdp_present = true;
                 let v = read_text_field(field).await?;
-                id_pdp_value = if v.is_empty() {
-                    None
-                } else {
-                    v.parse::<i32>().ok()
-                };
+                id_pdp_value = if v.is_empty() { None } else { Some(v) };
             }
             "id_kabupaten" => {
                 id_kabupaten_present = true;
