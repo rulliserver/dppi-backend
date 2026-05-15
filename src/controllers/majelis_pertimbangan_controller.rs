@@ -1,5 +1,5 @@
 // src/controllers/majelis_pertimbangan.rs
-use crate::{auth, models::majelis_pertimbangan::MajelisPertimbangan};
+use crate::{auth, models::majelis_pertimbangan::{MajelisPertimbangan, MajelisPertimbanganResponse}};
 use actix_multipart::Multipart;
 use actix_web::{Error, HttpRequest, HttpResponse, Responder, delete, get, post, put, web};
 use futures_util::TryStreamExt as _;
@@ -411,10 +411,12 @@ pub fn remove_file_if_exists(rel: &str) {
 pub async fn get_all_mp(
     pool: web::Data<MySqlPool>,
 ) -> Result<impl Responder, Error> {
-    let data = sqlx::query_as::<_, MajelisPertimbangan>(
+    let data = sqlx::query_as::<_, MajelisPertimbanganResponse>(
         r#"
-        SELECT id, id_pdp, nama_lengkap, photo, jabatan
-        FROM majelis_pertimbangan
+        SELECT mp.id, mp.id_pdp, mp.nama_lengkap, mp.photo, mp.jabatan, p.tingkat_penugasan, p.thn_tugas, p.id_provinsi, pr.nama_provinsi
+        FROM majelis_pertimbangan mp
+        LEFT JOIN pdp p ON mp.id_pdp = p.id
+        LEFT JOIN provinsi pr ON p.id_provinsi = pr.id
         "#,
     )
     .fetch_all(pool.get_ref())
