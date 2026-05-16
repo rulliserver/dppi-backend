@@ -335,7 +335,7 @@ pub async fn get_all_berita(
 #[derive(Deserialize)]
 pub struct Pagination2 {
     pub page: Option<u32>,
-    pub per_page: Option<u32>, // Ganti dari 'limit' jadi 'per_page'
+    pub per_page: Option<u32>,
     pub q: Option<String>,
 }
 
@@ -592,6 +592,7 @@ struct KabupatenPdp {
     nama_kabupaten: String,
     id_provinsi: i32,
 }
+
 #[get("/api/kabupaten")]
 pub async fn get_kabupaten(pool: web::Data<MySqlPool>) -> Result<impl Responder, Error> {
     let kabupaten: Vec<KabupatenPdp> =
@@ -599,6 +600,22 @@ pub async fn get_kabupaten(pool: web::Data<MySqlPool>) -> Result<impl Responder,
             .fetch_all(pool.get_ref())
             .await
             .map_err(actix_web::error::ErrorInternalServerError)?;
+    Ok(HttpResponse::Ok().json(kabupaten))
+}
+
+#[get("/api/kabupaten/{id}")]
+pub async fn get_kabupaten_by_id(
+    path: web::Path<i32>,
+    pool: web::Data<MySqlPool>,
+) -> Result<impl Responder, Error> {
+    let id: i32 = path.into_inner();
+    let kabupaten: Vec<KabupatenPdp> = sqlx::query_as::<_, KabupatenPdp>(
+        "SELECT id, nama_kabupaten, id_provinsi FROM kabupaten WHERE id_provinsi = ?",
+    )
+    .bind(id)
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
     Ok(HttpResponse::Ok().json(kabupaten))
 }
 
@@ -643,22 +660,64 @@ pub async fn get_profil(pool: web::Data<MySqlPool>) -> Result<impl Responder, Er
 //pelaksana-pusat
 #[derive(Serialize, FromRow, Debug)]
 struct PelaksanaPusat {
-    id: i32,
+    id: i64,
     id_pdp: Option<String>,
     nama_lengkap: String,
     photo: Option<String>,
     jabatan: String,
+    tingkat_penugasan: Option<String>,
+    thn_tugas: i32,
+    id_provinsi: i32,
+    nama_provinsi: Option<String>,
+    nama_kabupaten: Option<String>,
+    asal_sma: Option<String>,
 }
+
 #[get("/api/pelaksana-pusat")]
 pub async fn get_pelaksana_pusat(pool: web::Data<MySqlPool>) -> Result<impl Responder, Error> {
-    let pelaksana_pusat: Vec<PelaksanaPusat> = sqlx::query_as::<_, PelaksanaPusat>(
-        "SELECT id, id_pdp, nama_lengkap, photo, jabatan FROM pelaksana_pusat",
+    let data = sqlx::query_as::<_, PelaksanaPusat>(
+        r#"
+        SELECT
+            pp.id,
+            pp.id_pdp,
+            pp.nama_lengkap,
+            pp.photo,
+            pp.jabatan,
+            p.tingkat_penugasan,
+            p.thn_tugas,
+            p.id_provinsi,
+            pr.nama_provinsi,
+            k.nama_kabupaten,
+            UPPER(
+                CASE
+                    -- Prioritas 1: Dari tabel pendidikan dengan jenjang SMA/SMK/MA
+                    WHEN EXISTS (
+                        SELECT 1 FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                    ) THEN (
+                        SELECT MAX(nama_instansi_pendidikan)
+                        FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                        LIMIT 1
+                    )
+                    -- Prioritas 2: Dari pdp jika pendidikan_terakhir = SMA/Sederajat
+                    WHEN UPPER(p.pendidikan_terakhir) = 'SMA/SEDERAJAT' THEN p.nama_instansi_pendidikan
+                    ELSE NULL
+                END
+            ) as asal_sma
+        FROM pelaksana_pusat pp
+        LEFT JOIN pdp p ON pp.id_pdp = p.id
+        LEFT JOIN provinsi pr ON p.id_provinsi = pr.id
+        LEFT JOIN kabupaten k ON p.id_kabupaten = k.id
+        "#,
     )
     .fetch_all(pool.get_ref())
     .await
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    Ok(HttpResponse::Ok().json(pelaksana_pusat))
+    Ok(HttpResponse::Ok().json(data))
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -708,13 +767,17 @@ pub async fn pelaksana_provinsi(pool: web::Data<MySqlPool>) -> impl Responder {
 
 #[derive(Debug, Serialize, FromRow)]
 struct PelaksanaProvinsiById {
-    id: i32,
+    id: i64,
     id_pdp: Option<String>,
-    id_provinsi: Option<i32>,
     nama_lengkap: String,
     photo: Option<String>,
-    jabatan: Option<String>,
-    nama_provinsi: String,
+    jabatan: String,
+    tingkat_penugasan: Option<String>,
+    thn_tugas: Option<i32>,
+    id_provinsi: Option<i32>,
+    nama_provinsi: Option<String>,
+    nama_kabupaten: Option<String>,
+    asal_sma: Option<String>,
 }
 
 //pelaksana-provinsi-by-id
@@ -728,25 +791,45 @@ pub async fn get_pelaksana_provinsi(
     let pelaksana = sqlx::query_as::<_, PelaksanaProvinsiById>(
         r#"
         SELECT
-            pp.id_provinsi,
             pp.id,
             pp.id_pdp,
             pp.nama_lengkap,
             pp.photo,
             pp.jabatan,
-            p.nama_provinsi
-        FROM
-            provinsi p
-        LEFT JOIN
-            pelaksana_provinsi pp ON pp.id_provinsi = p.id
-        WHERE
-            pp.id_provinsi = ?
-        GROUP BY
-            pp.id_provinsi, p.nama_provinsi, pp.id, pp.nama_lengkap, pp.photo, pp.jabatan, pp.id_pdp
+            p.tingkat_penugasan,
+            p.thn_tugas,
+            p.id_provinsi,
+            pr.nama_provinsi,
+            k.nama_kabupaten,
+            UPPER(
+                CASE
+                    -- Prioritas 1: Dari tabel pendidikan dengan jenjang SMA/SMK/MA
+                    WHEN EXISTS (
+                        SELECT 1 FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                    ) THEN (
+                        SELECT MAX(nama_instansi_pendidikan)
+                        FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                        LIMIT 1
+                    )
+                    -- Prioritas 2: Dari pdp jika pendidikan_terakhir = SMA/Sederajat
+                    WHEN UPPER(p.pendidikan_terakhir) = 'SMA/SEDERAJAT' THEN p.nama_instansi_pendidikan
+                    ELSE NULL
+                END
+            ) as asal_sma
+        FROM pelaksana_provinsi pp
+        LEFT JOIN pdp p ON pp.id_pdp = p.id
+        LEFT JOIN provinsi pr ON p.id_provinsi = pr.id
+        LEFT JOIN kabupaten k ON p.id_kabupaten = k.id
+        WHERE pp.id_provinsi = ?
+
         "#,
     )
     .bind(&id)
-    .fetch_all(pool.get_ref()) // gunakan fetch_one() kalau pasti 1 data
+    .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
         log::error!(
@@ -848,13 +931,18 @@ pub async fn get_pelaksana_kabupaten_names(
 
 #[derive(Debug, Serialize, FromRow)]
 struct PelaksanaKabupatenById {
-    id: i32,
+    id: i64,
     id_pdp: Option<String>,
-    id_kabupaten: Option<i32>,
     nama_lengkap: String,
     photo: Option<String>,
-    jabatan: Option<String>,
-    nama_kabupaten: String,
+    jabatan: String,
+    tingkat_penugasan: Option<String>,
+    thn_tugas: Option<i32>,
+    id_provinsi: Option<i32>,
+    id_kabupaten: Option<i32>,
+    nama_kabupaten: Option<String>,
+    nama_provinsi: Option<String>,
+    asal_sma: Option<String>,
 }
 //pelaksana-kabupaten-by-id
 #[get("/api/pelaksana-kabupaten/{id}")]
@@ -866,26 +954,47 @@ pub async fn get_pelaksana_kabupaten(
 
     let pelaksana = sqlx::query_as::<_, PelaksanaKabupatenById>(
         r#"
-        SELECT
-            pp.id_kabupaten,
+         SELECT
             pp.id,
             pp.id_pdp,
             pp.nama_lengkap,
             pp.photo,
             pp.jabatan,
-            p.nama_kabupaten
-        FROM
-            kabupaten p
-        LEFT JOIN
-            pelaksana_kabupaten pp ON pp.id_kabupaten = p.id
-        WHERE
-            pp.id_kabupaten = ?
-        GROUP BY
-            pp.id_kabupaten, p.nama_kabupaten, pp.id, pp.nama_lengkap, pp.photo, pp.jabatan, pp.id_pdp
+            p.tingkat_penugasan,
+            p.thn_tugas,
+            p.id_provinsi,
+            pp.id_kabupaten,
+            pr.nama_provinsi,
+            k.nama_kabupaten,
+            UPPER(
+                CASE
+                    -- Prioritas 1: Dari tabel pendidikan dengan jenjang SMA/SMK/MA
+                    WHEN EXISTS (
+                        SELECT 1 FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                    ) THEN (
+                        SELECT MAX(nama_instansi_pendidikan)
+                        FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                        LIMIT 1
+                    )
+                    -- Prioritas 2: Dari pdp jika pendidikan_terakhir = SMA/Sederajat
+                    WHEN UPPER(p.pendidikan_terakhir) = 'SMA/SEDERAJAT' THEN p.nama_instansi_pendidikan
+                    ELSE NULL
+                END
+            ) as asal_sma
+        FROM pelaksana_kabupaten pp
+        LEFT JOIN pdp p ON pp.id_pdp = p.id
+        LEFT JOIN provinsi pr ON p.id_provinsi = pr.id
+        LEFT JOIN kabupaten k ON pp.id_kabupaten = k.id
+        WHERE  pp.id_kabupaten = ?
+
         "#,
     )
     .bind(&id)
-    .fetch_all(pool.get_ref()) // gunakan fetch_one() kalau pasti 1 data
+    .fetch_all(pool.get_ref())
     .await
     .map_err(|e| {
         log::error!(
@@ -898,6 +1007,7 @@ pub async fn get_pelaksana_kabupaten(
 
     Ok(HttpResponse::Ok().json(pelaksana))
 }
+
 #[derive(Debug, Serialize, FromRow)]
 struct Regulasi {
     id: i32,
@@ -906,7 +1016,6 @@ struct Regulasi {
     file_regulasi: String,
     created_at: DateTime<Utc>,
     created_by: String,
-
 }
 
 #[get("/api/regulasi")]

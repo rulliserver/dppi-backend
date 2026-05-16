@@ -21,5 +21,6 @@ pub struct MajelisPertimbanganResponse {
     pub tingkat_penugasan: String,
     pub thn_tugas: i32,
     pub id_provinsi: i32,
-    pub nama_provinsi:String
+    pub nama_provinsi: String,
+    pub asal_sma: String,
 }

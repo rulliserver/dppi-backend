@@ -413,7 +413,25 @@ pub async fn get_all_mp(
 ) -> Result<impl Responder, Error> {
     let data = sqlx::query_as::<_, MajelisPertimbanganResponse>(
         r#"
-        SELECT mp.id, mp.id_pdp, mp.nama_lengkap, mp.photo, mp.jabatan, p.tingkat_penugasan, p.thn_tugas, p.id_provinsi, pr.nama_provinsi
+        SELECT mp.id, mp.id_pdp, mp.nama_lengkap, mp.photo, mp.jabatan, p.tingkat_penugasan, p.thn_tugas, p.id_provinsi, pr.nama_provinsi,  UPPER(
+                CASE
+                    -- Prioritas 1: Dari tabel pendidikan dengan jenjang SMA/SMK/MA
+                    WHEN EXISTS (
+                        SELECT 1 FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                    ) THEN (
+                        SELECT MAX(nama_instansi_pendidikan)
+                        FROM pendidikan
+                        WHERE id_pdp = pp.id_pdp
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                        LIMIT 1
+                    )
+                    -- Prioritas 2: Dari pdp jika pendidikan_terakhir = SMA/Sederajat
+                    WHEN UPPER(p.pendidikan_terakhir) = 'SMA/SEDERAJAT' THEN p.nama_instansi_pendidikan
+                    ELSE NULL
+                END
+            ) as asal_sma
         FROM majelis_pertimbangan mp
         LEFT JOIN pdp p ON mp.id_pdp = p.id
         LEFT JOIN provinsi pr ON p.id_provinsi = pr.id

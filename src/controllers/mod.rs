@@ -2,6 +2,7 @@
 pub mod auth_controller;
 pub mod cv_card_controller;
 pub mod dashboard_controller;
+pub mod dppi_dilantik_controller;
 pub mod gallery_controller;
 pub mod home_controller;
 pub mod kegiatan_controller;

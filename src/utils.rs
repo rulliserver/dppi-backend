@@ -98,7 +98,7 @@ pub fn get_encryption_key() -> Result<secretbox::Key, Box<dyn std::error::Error>
     log::debug!("Encryption key loaded successfully");
     Ok(key)
 }
-// Fungsi normalize_phone yang lebih robust
+// Fungsi normalize_phone 
 pub fn normalize_phone(phone: &str) -> String {
     // Menghapus semua karakter selain angka
     let normalized_phone: String = phone.chars().filter(|c| c.is_ascii_digit()).collect();
@@ -303,8 +303,8 @@ pub fn generate_slug(text: &str) -> String {
 /// attachment: Some(&(filename, bytes, mime)), contoh: ("file.pdf", vec![..], "application/pdf")
 pub async fn send_generic_email_mail_send(
     to: &str,
-    cc: Option<&str>,  // koma-separeted
-    bcc: Option<&str>, // koma-separeted
+    cc: Option<&str>, 
+    bcc: Option<&str>, 
     subject: &str,
     text: &str,
     html: Option<&str>,
@@ -327,7 +327,6 @@ pub async fn send_generic_email_mail_send(
         .unwrap_or_else(|_| "STARTTLS".into())
         .to_uppercase();
 
-    // Bangun message (To bisa banyak, tapi di sini satu sesuai UI)
     let mut msg = MessageBuilder::new()
         .from((from_name.as_str(), from_addr.as_str()))
         .subject(subject)

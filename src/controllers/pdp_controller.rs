@@ -1028,7 +1028,7 @@ async fn fetch_all_pdp_verified(
          LEFT JOIN kabupaten kd ON p.id_kabupaten_domisili = kd.id
          LEFT JOIN provinsi pp ON p.id_provinsi = pp.id
          LEFT JOIN kabupaten kp ON p.id_kabupaten = kp.id
-         WHERE p.status = 'Verified'",
+         WHERE p.status = 'Verified' or p.status='Simental'",
     );
 
     // Tambahkan kondisi WHERE untuk filter wilayah - CARA SAMA
@@ -3597,7 +3597,26 @@ async fn fetch_pdp_by_provinsi(
             p.id_kabupaten,
             p.id_provinsi,
             pr.nama_provinsi,
-            k.nama_kabupaten
+            k.nama_kabupaten,
+            UPPER(
+                CASE
+                    -- Prioritas 1: Dari tabel pendidikan dengan jenjang SMA/SMK/MA
+                    WHEN EXISTS (
+                        SELECT 1 FROM pendidikan
+                        WHERE id_pdp = p.id
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                    ) THEN (
+                        SELECT MAX(nama_instansi_pendidikan)
+                        FROM pendidikan
+                        WHERE id_pdp = p.id
+                        AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
+                        LIMIT 1
+                    )
+                    -- Prioritas 2: Dari pdp jika pendidikan_terakhir = SMA/Sederajat
+                    WHEN UPPER(p.pendidikan_terakhir) = 'SMA/SEDERAJAT' THEN p.nama_instansi_pendidikan
+                    ELSE NULL
+                END
+            ) as asal_sma
         FROM pdp p
         LEFT JOIN provinsi pr ON p.id_provinsi = pr.id
         LEFT JOIN kabupaten k ON p.id_kabupaten = k.id

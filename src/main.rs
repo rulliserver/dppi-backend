@@ -100,6 +100,7 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::home_controller::get_pdp_kabupaten)
             .service(controllers::home_controller::get_pdp_provinsi)
             .service(controllers::home_controller::get_kabupaten)
+            .service(controllers::home_controller::get_kabupaten_by_id)
             .service(controllers::home_controller::get_provinsi)
             .service(controllers::home_controller::get_pelaksana_pusat)
             .service(controllers::home_controller::pelaksana_provinsi)
@@ -294,6 +295,11 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::majelis_pertimbangan_controller::update_majelis_pertimbangan)
             .service(controllers::majelis_pertimbangan_controller::delete_majelis_pertimbangan)
             .service(controllers::majelis_pertimbangan_controller::get_all_mp)
+            //dppi_dilantik
+            .service(controllers::dppi_dilantik_controller::get_dppi_dilantik)
+            .service(controllers::dppi_dilantik_controller::put_dppi_dilantik)
+            .service(controllers::dppi_dilantik_controller::create_dppi_dilantik)
+            .service(controllers::dppi_dilantik_controller::delete_dppi_dilantik)
             //pdp
             .service(controllers::pdp_controller::scope())
     })
