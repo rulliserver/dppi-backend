@@ -112,6 +112,8 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::home_controller::view_regulasi)
             .service(controllers::home_controller::post_pesan)
             .service(controllers::home_controller::get_pengumuman)
+            .service(controllers::home_controller::get_dppi_dilantik_provinsi)
+            .service(controllers::home_controller::get_dppi_dilantik_kabupaten)
             //auth Controller
             .service(controllers::auth_controller::get_jabatan)
             .service(controllers::auth_controller::get_hobi)

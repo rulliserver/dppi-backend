@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use sodiumoxide::crypto::secretbox;
-use sqlx::{FromRow, MySqlPool, QueryBuilder, Row, mysql::MySqlRow};
+use sqlx::{FromRow, MySqlPool, Row, mysql::MySqlRow};
 use std::{env, path::Path as Jalur};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
@@ -2307,7 +2307,7 @@ pub struct PdpUpdatePayload {
     pub id_provinsi_domisili: Option<i32>,
     pub id_kabupaten: Option<i32>,
     pub id_provinsi: Option<i32>,
-    pub id_hobi: Option<Vec<String>>,
+    pub id_hobi: Option<String>,
     pub id_bakat: Option<i32>,
     pub detail_bakat: Option<String>,
     pub id_minat: Option<i32>,
@@ -2626,7 +2626,7 @@ pub async fn update_pdp(
             if hobi.is_empty() {
                 None
             } else {
-                Some(serde_json::to_string(hobi).unwrap_or_else(|_| "[]".to_string()))
+                Some(serde_json::to_string(hobi).unwrap_or_default())
             }
         }))
         .bind(upd.id_bakat)
@@ -3505,6 +3505,7 @@ pub struct PdpDetailParams {
     pub page: Option<u32>,
     pub limit: Option<u32>,
     pub q: Option<String>,
+    pub kab: Option<String>,
 }
 
 #[derive(Debug, FromRow)]
@@ -3518,7 +3519,6 @@ struct PdpSimpleQuery {
     pub tingkat_penugasan: Option<String>,
     pub tahun_tugas: Option<i32>,
 }
-
 #[get("/api/pdp-detail")]
 pub async fn get_pdp_detail_public(
     pool: Data<MySqlPool>,
@@ -3528,16 +3528,22 @@ pub async fn get_pdp_detail_public(
     let limit = params.limit.unwrap_or(20).clamp(1, 100);
     let q = params.q.unwrap_or_default();
     let offset = (page - 1) * limit;
+    let kab = params.kab.unwrap_or_default(); // sudah benar
 
     log::debug!(
-        "Fetching PDP by provinsi id: {}, page: {}, limit: {}, q: {}",
+        "Fetching PDP by provinsi id: {}, kab: {}, page: {}, limit: {}, q: {}",
         params.id,
+        kab,
         page,
         limit,
-        q
+        q,
     );
 
-    let (data, total) = fetch_pdp_by_provinsi(&pool, &params.id, limit, offset, &q).await?;
+    let (data, total) = fetch_pdp_by_provinsi(
+        &pool, &params.id, &kab, 
+        limit, offset, &q,
+    )
+    .await?;
 
     let total_pages = ((total as f64) / (limit as f64)).ceil() as u32;
 
@@ -3552,18 +3558,27 @@ pub async fn get_pdp_detail_public(
 
     Ok(HttpResponse::Ok().json(response))
 }
+
 async fn fetch_pdp_by_provinsi(
     pool: &MySqlPool,
     provinsi_id: &str,
+    kab_id: &str,
     limit: u32,
     offset: u32,
     q: &str,
 ) -> Result<(Vec<PdpSimple>, i64), Error> {
+    use sqlx::QueryBuilder;
+
     let like_pattern = format!("%{}%", q);
 
-    // 1. HITUNG TOTAL DATA (COUNT)
+    // Count query
     let mut count_builder = QueryBuilder::new("SELECT COUNT(*) FROM pdp p WHERE p.id_provinsi = ");
     count_builder.push_bind(provinsi_id);
+
+    if !kab_id.is_empty() {
+        count_builder.push(" AND p.id_kabupaten = ");
+        count_builder.push_bind(kab_id);
+    }
 
     if !q.is_empty() {
         count_builder.push(" AND (p.nama_lengkap LIKE ");
@@ -3580,12 +3595,12 @@ async fn fetch_pdp_by_provinsi(
         .fetch_one(pool)
         .await
         .map_err(|e| {
-            log::error!("Error counting PDP by provinsi: {}", e);
+            log::error!("Error counting PDP: {}", e);
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
-    // 2. QUERY DATA UTAMA
-    let mut select_builder = QueryBuilder::new(
+    // Main query
+    let mut query_builder = QueryBuilder::new(
         r#"
         SELECT
             p.id,
@@ -3600,7 +3615,6 @@ async fn fetch_pdp_by_provinsi(
             k.nama_kabupaten,
             UPPER(
                 CASE
-                    -- Prioritas 1: Dari tabel pendidikan dengan jenjang SMA/SMK/MA
                     WHEN EXISTS (
                         SELECT 1 FROM pendidikan
                         WHERE id_pdp = p.id
@@ -3612,7 +3626,6 @@ async fn fetch_pdp_by_provinsi(
                         AND UPPER(jenjang_pendidikan) IN ('SMA', 'SMK', 'MA')
                         LIMIT 1
                     )
-                    -- Prioritas 2: Dari pdp jika pendidikan_terakhir = SMA/Sederajat
                     WHEN UPPER(p.pendidikan_terakhir) = 'SMA/SEDERAJAT' THEN p.nama_instansi_pendidikan
                     ELSE NULL
                 END
@@ -3623,33 +3636,38 @@ async fn fetch_pdp_by_provinsi(
         WHERE p.id_provinsi =
         "#,
     );
-    select_builder.push_bind(provinsi_id);
+    query_builder.push_bind(provinsi_id);
 
-    if !q.is_empty() {
-        select_builder.push(" AND (p.nama_lengkap LIKE ");
-        select_builder.push_bind(&like_pattern);
-        select_builder.push(" OR p.tingkat_penugasan LIKE ");
-        select_builder.push_bind(&like_pattern);
-        select_builder.push(" OR p.thn_tugas LIKE ");
-        select_builder.push_bind(&like_pattern);
-        select_builder.push(")");
+    if !kab_id.is_empty() {
+        query_builder.push(" AND p.id_kabupaten = ");
+        query_builder.push_bind(kab_id);
     }
 
-    select_builder.push(" ORDER BY p.id_kabupaten DESC, p.nama_lengkap ASC LIMIT ");
-    select_builder.push_bind(limit);
-    select_builder.push(" OFFSET ");
-    select_builder.push_bind(offset);
+    if !q.is_empty() {
+        query_builder.push(" AND (p.nama_lengkap LIKE ");
+        query_builder.push_bind(&like_pattern);
+        query_builder.push(" OR p.tingkat_penugasan LIKE ");
+        query_builder.push_bind(&like_pattern);
+        query_builder.push(" OR p.thn_tugas LIKE ");
+        query_builder.push_bind(&like_pattern);
+        query_builder.push(")");
+    }
 
-    let rows: Vec<PdpSimpleQuery> = select_builder
-        .build_query_as::<PdpSimpleQuery>()
+    query_builder.push(" ORDER BY p.id_kabupaten DESC, p.nama_lengkap ASC LIMIT ");
+    query_builder.push_bind(limit);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(offset);
+
+    let rows: Vec<PdpSimpleQuery> = query_builder
+        .build_query_as()
         .fetch_all(pool)
         .await
         .map_err(|e| {
-            log::error!("Error fetching PDP by provinsi: {}", e);
+            log::error!("Error fetching PDP: {}", e);
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
 
-    // 3. PROSES DEKRIPSI DATA
+    // 3. PROSES DEKRIPSI DATA (sama seperti sebelumnya)
     let key = crate::utils::get_encryption_key()
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
@@ -3686,7 +3704,6 @@ async fn fetch_pdp_by_provinsi(
 
     Ok((decrypted_data, total))
 }
-
 // =======================
 // Router config helper
 // =======================

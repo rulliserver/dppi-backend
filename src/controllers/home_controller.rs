@@ -1428,3 +1428,65 @@ pub async fn get_pengumuman(pool: web::Data<MySqlPool>) -> Result<HttpResponse, 
         }
     }
 }
+
+#[derive(Deserialize, Serialize, FromRow, Debug)]
+struct DppiDilantik {
+    id: i32,
+    tingkat: String,
+    id_provinsi: Option<i32>,
+    id_kabupaten: Option<i64>,
+    nama_kabupaten: Option<String>,
+    nama_provinsi: Option<String>,
+}
+
+#[get("/api/dppi-dilantik/provinsi")]
+pub async fn get_dppi_dilantik_provinsi(
+    pool: web::Data<MySqlPool>,
+) -> Result<impl Responder, Error> {
+    let data = sqlx::query_as::<_, DppiDilantik>(
+        r#"
+            SELECT
+                d.id,
+                d.tingkat,
+                d.id_provinsi,
+                d.id_kabupaten,
+                p.nama_provinsi,
+                k.nama_kabupaten
+            FROM dppi_dilantik d
+            LEFT JOIN kabupaten k ON d.id_kabupaten = k.id
+            LEFT JOIN provinsi p ON d.id_provinsi = p.id
+            WHERE d.id_kabupaten IS NULL
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Ok().json(data))
+}
+
+#[get("/api/dppi-dilantik/kabupaten")]
+pub async fn get_dppi_dilantik_kabupaten(
+    pool: web::Data<MySqlPool>,
+) -> Result<impl Responder, Error> {
+    let data = sqlx::query_as::<_, DppiDilantik>(
+        r#"
+            SELECT
+                d.id,
+                d.tingkat,
+                d.id_provinsi,
+                d.id_kabupaten,
+                p.nama_provinsi,
+                k.nama_kabupaten
+            FROM dppi_dilantik d
+            INNER JOIN kabupaten k ON d.id_kabupaten = k.id
+            LEFT JOIN provinsi p ON d.id_provinsi = p.id
+            WHERE d.id_kabupaten IS NOT NULL;
+        "#,
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Ok().json(data))
+}
