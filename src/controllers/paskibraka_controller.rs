@@ -121,7 +121,7 @@ pub async fn get_pasnas(
             let latest_tahun: Option<i32> = sqlx::query_scalar(
                 "SELECT DISTINCT tahun_tugas FROM paskibraka_nasional
                  WHERE tahun_tugas IS NOT NULL
-                 ORDER BY tahun_tugas DESC LIMIT 1"
+                 ORDER BY tahun_tugas DESC LIMIT 1",
             )
             .fetch_optional(pool.get_ref())
             .await
@@ -139,7 +139,7 @@ pub async fn get_pasnas(
             let like = format!("%{}%", keyword);
             sqlx::query_as::<_, (i64,)>(
                 "SELECT COUNT(*) FROM paskibraka_nasional
-                 WHERE nama_lengkap LIKE ? AND tahun_tugas = ?"
+                 WHERE nama_lengkap LIKE ? AND tahun_tugas = ?",
             )
             .bind(&like)
             .bind(tahun)
@@ -153,7 +153,7 @@ pub async fn get_pasnas(
         (Some(keyword), None) => {
             let like = format!("%{}%", keyword);
             sqlx::query_as::<_, (i64,)>(
-                "SELECT COUNT(*) FROM paskibraka_nasional WHERE nama_lengkap LIKE ?"
+                "SELECT COUNT(*) FROM paskibraka_nasional WHERE nama_lengkap LIKE ?",
             )
             .bind(&like)
             .fetch_one(pool.get_ref())
@@ -163,27 +163,23 @@ pub async fn get_pasnas(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?
         }
-        (None, Some(tahun)) => {
-            sqlx::query_as::<_, (i64,)>(
-                "SELECT COUNT(*) FROM paskibraka_nasional WHERE tahun_tugas = ?"
-            )
-            .bind(tahun)
+        (None, Some(tahun)) => sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM paskibraka_nasional WHERE tahun_tugas = ?",
+        )
+        .bind(tahun)
+        .fetch_one(pool.get_ref())
+        .await
+        .map_err(|e| {
+            eprintln!("Count error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?,
+        (None, None) => sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM paskibraka_nasional")
             .fetch_one(pool.get_ref())
             .await
             .map_err(|e| {
                 eprintln!("Count error: {:?}", e);
                 actix_web::error::ErrorInternalServerError("Database error")
-            })?
-        }
-        (None, None) => {
-            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM paskibraka_nasional")
-                .fetch_one(pool.get_ref())
-                .await
-                .map_err(|e| {
-                    eprintln!("Count error: {:?}", e);
-                    actix_web::error::ErrorInternalServerError("Database error")
-                })?
-        }
+            })?,
     };
 
     let total_items = total_items.max(0) as u64;
@@ -192,7 +188,11 @@ pub async fn get_pasnas(
     } else {
         ((total_items + (per_page as u64) - 1) / (per_page as u64)) as u32
     };
-    let current = if page > total_pages { total_pages } else { page };
+    let current = if page > total_pages {
+        total_pages
+    } else {
+        page
+    };
     let offset = ((current - 1) as u64) * (per_page as u64);
 
     // Data query dengan JOIN
@@ -216,7 +216,7 @@ pub async fn get_pasnas(
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  WHERE pn.nama_lengkap LIKE ? AND pn.tahun_tugas = ?
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
+                 LIMIT ? OFFSET ?"#,
             )
             .bind(&like)
             .bind(tahun)
@@ -248,7 +248,7 @@ pub async fn get_pasnas(
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  WHERE pn.nama_lengkap LIKE ?
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
+                 LIMIT ? OFFSET ?"#,
             )
             .bind(&like)
             .bind(per_page)
@@ -260,9 +260,8 @@ pub async fn get_pasnas(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?
         }
-        (None, Some(tahun)) => {
-            sqlx::query_as::<_, PaskibrakaNasional>(
-                r#"SELECT
+        (None, Some(tahun)) => sqlx::query_as::<_, PaskibrakaNasional>(
+            r#"SELECT
                     pn.id,
                     pn.nama_lengkap,
                     pn.jk,
@@ -278,21 +277,19 @@ pub async fn get_pasnas(
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  WHERE pn.tahun_tugas = ?
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
-            )
-            .bind(tahun)
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(pool.get_ref())
-            .await
-            .map_err(|e| {
-                eprintln!("Data error: {:?}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?
-        }
-        (None, None) => {
-            sqlx::query_as::<_, PaskibrakaNasional>(
-                r#"SELECT
+                 LIMIT ? OFFSET ?"#,
+        )
+        .bind(tahun)
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| {
+            eprintln!("Data error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?,
+        (None, None) => sqlx::query_as::<_, PaskibrakaNasional>(
+            r#"SELECT
                     pn.id,
                     pn.nama_lengkap,
                     pn.jk,
@@ -307,17 +304,16 @@ pub async fn get_pasnas(
                  LEFT JOIN provinsi p ON pn.id_provinsi = p.id
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
-            )
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(pool.get_ref())
-            .await
-            .map_err(|e| {
-                eprintln!("Data error: {:?}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?
-        }
+                 LIMIT ? OFFSET ?"#,
+        )
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| {
+            eprintln!("Data error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?,
     };
 
     let from = if total_items == 0 { 0 } else { offset + 1 };
@@ -546,7 +542,7 @@ pub async fn get_pasnas_by_id(
          FROM paskibraka_nasional pn
          LEFT JOIN provinsi p ON pn.id_provinsi = p.id
          LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
-         WHERE pn.id = ?"#
+         WHERE pn.id = ?"#,
     )
     .bind(id.into_inner())
     .fetch_optional(pool.get_ref())
@@ -569,7 +565,7 @@ pub async fn get_pasnas_by_id(
         })),
     }
 }
-// UPDATE Paskibraka Nasional
+
 #[put("/api/adminpanel/paskibraka-nasional/{id}")]
 pub async fn update_pasnas(
     pool: web::Data<MySqlPool>,
@@ -741,39 +737,7 @@ pub async fn update_pasnas(
         }
     }
 
-    // Build dynamic update query - Cara 1: Menggunakan sqlx::QueryBuilder (REKOMENDASI)
-    let mut query_builder = sqlx::QueryBuilder::new("UPDATE paskibraka_nasional SET ");
-    let mut separated = query_builder.separated(", ");
-
-    if let Some(nama) = &update_data.nama_lengkap {
-        separated.push("nama_lengkap = ");
-        separated.push_bind(nama);
-    }
-    if let Some(jk) = &update_data.jk {
-        separated.push("jk = ");
-        separated.push_bind(jk);
-    }
-    if let Some(provinsi) = &update_data.id_provinsi {
-        separated.push("id_provinsi = ");
-        separated.push_bind(provinsi);
-    }
-    if let Some(kabupaten) = &update_data.id_kabupaten {
-        separated.push("id_kabupaten = ");
-        separated.push_bind(kabupaten);
-    }
-    if let Some(sma) = &update_data.asal_sma {
-        separated.push("asal_sma = ");
-        separated.push_bind(sma);
-    }
-    if let Some(tahun) = &update_data.tahun_tugas {
-        separated.push("tahun_tugas = ");
-        separated.push_bind(tahun);
-    }
-    if let Some(photo) = &update_data.photo {
-        separated.push("photo = ");
-        separated.push_bind(photo);
-    }
-
+    // Check if any field to update
     if update_data.nama_lengkap.is_none()
         && update_data.jk.is_none()
         && update_data.id_provinsi.is_none()
@@ -789,14 +753,56 @@ pub async fn update_pasnas(
         }));
     }
 
-    query_builder.push(" WHERE id = ");
-    query_builder.push_bind(item_id);
+    // Build dynamic update query - Cara manual yang lebih aman
+    let mut set_clauses = Vec::new();
+    let mut params: Vec<String> = Vec::new();
 
-    let query = query_builder.build();
+    if let Some(nama) = &update_data.nama_lengkap {
+        set_clauses.push("nama_lengkap = ?".to_string());
+        params.push(nama.clone());
+    }
+    if let Some(jk) = &update_data.jk {
+        set_clauses.push("jk = ?".to_string());
+        params.push(jk.clone());
+    }
+    if let Some(provinsi) = &update_data.id_provinsi {
+        set_clauses.push("id_provinsi = ?".to_string());
+        params.push(provinsi.to_string());
+    }
+    if let Some(kabupaten) = &update_data.id_kabupaten {
+        set_clauses.push("id_kabupaten = ?".to_string());
+        params.push(kabupaten.to_string());
+    }
+    if let Some(sma) = &update_data.asal_sma {
+        set_clauses.push("asal_sma = ?".to_string());
+        params.push(sma.clone());
+    }
+    if let Some(tahun) = &update_data.tahun_tugas {
+        set_clauses.push("tahun_tugas = ?".to_string());
+        params.push(tahun.to_string());
+    }
+    if let Some(photo) = &update_data.photo {
+        set_clauses.push("photo = ?".to_string());
+        params.push(photo.clone());
+    }
 
+    let set_clause = set_clauses.join(", ");
+    let query_str = format!("UPDATE paskibraka_nasional SET {} WHERE id = ?", set_clause);
+
+    // Execute dengan sqlx query builder
+    let mut query = sqlx::query(&query_str);
+
+    // Bind semua parameter
+    for param in params {
+        query = query.bind(param);
+    }
+    // Bind ID
+    query = query.bind(item_id);
+
+    // Execute query
     query.execute(pool.get_ref()).await.map_err(|e| {
         eprintln!("Update error: {:?}", e);
-        actix_web::error::ErrorInternalServerError("Gagal mengupdate data")
+        actix_web::error::ErrorInternalServerError(format!("Gagal mengupdate data: {}", e))
     })?;
 
     Ok(HttpResponse::Ok().json(ApiResponse {
@@ -806,51 +812,61 @@ pub async fn update_pasnas(
     }))
 }
 
-// DELETE Paskibraka Nasional
+#[derive(sqlx::FromRow)]
+struct TempRecord {
+    photo: Option<String>,
+}
+
 #[delete("/api/adminpanel/paskibraka-nasional/{id}")]
 pub async fn delete_pasnas(
     pool: web::Data<MySqlPool>,
     req: HttpRequest,
     id: web::Path<i32>,
 ) -> Result<impl Responder, Error> {
-    // Auth check - only Superadmin can delete
+    // Auth check
     let claims =
         auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
-    if claims.role != "Superadmin" {
+    if !["Superadmin", "Administrator"].contains(&claims.role.as_str()) {
         return Err(actix_web::error::ErrorForbidden(
-            "Hanya Superadmin yang dapat menghapus data",
+            "Hanya Superadmin atau Administrator yang dapat mengakses",
         ));
     }
 
     let item_id = id.into_inner();
 
-    // Get photo path before delete
-    let photo_path: Option<String> =
-        sqlx::query_scalar("SELECT photo FROM paskibraka_nasional WHERE id = ?")
+    let record =
+        sqlx::query_as::<_, TempRecord>("SELECT photo FROM paskibraka_nasional WHERE id = ?")
             .bind(item_id)
             .fetch_optional(pool.get_ref())
             .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+            .map_err(|e| {
+                eprintln!("Error fetching record: {:?}", e);
+                actix_web::error::ErrorInternalServerError(e.to_string())
+            })?;
 
-    // Delete from database
-    let result = sqlx::query("DELETE FROM paskibraka_nasional WHERE id = ?")
+    // Delete record
+    let rows_affected = sqlx::query("DELETE FROM paskibraka_nasional WHERE id = ?")
         .bind(item_id)
         .execute(pool.get_ref())
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
+        .map_err(|e| {
+            eprintln!("Error deleting: {:?}", e);
+            actix_web::error::ErrorInternalServerError(format!("Delete error: {}", e))
+        })?
+        .rows_affected();
 
-    if result.rows_affected() == 0 {
+    if rows_affected == 0 {
         return Ok(HttpResponse::NotFound().json(ApiResponse {
             success: false,
             message: "Data tidak ditemukan".to_string(),
             data: None::<()>,
         }));
     }
-
-    // Delete photo file if exists
-    if let Some(photo) = photo_path {
-        if fs::metadata(&photo).is_ok() {
-            let _ = fs::remove_file(&photo);
+    if let Some(record) = record {
+        if let Some(photo_path) = record.photo {
+            if !photo_path.is_empty() && fs::metadata(&photo_path).is_ok() {
+                let _ = fs::remove_file(&photo_path);
+            }
         }
     }
 
@@ -879,7 +895,7 @@ pub async fn get_tahun_list(
     let tahun_list: Vec<i32> = sqlx::query_scalar(
         "SELECT DISTINCT tahun_tugas
          FROM paskibraka_nasional
-         ORDER BY tahun_tugas DESC"
+         ORDER BY tahun_tugas DESC",
     )
     .fetch_all(pool.get_ref())
     .await
@@ -902,7 +918,6 @@ pub async fn get_pasnas_public(
     pool: web::Data<MySqlPool>,
     query: web::Query<ListQuery>,
 ) -> Result<impl Responder, Error> {
-
     let mut page = query.page.unwrap_or(1);
     if page == 0 {
         page = 1;
@@ -918,7 +933,7 @@ pub async fn get_pasnas_public(
             let latest_tahun: Option<i32> = sqlx::query_scalar(
                 "SELECT DISTINCT tahun_tugas FROM paskibraka_nasional
                  WHERE tahun_tugas IS NOT NULL
-                 ORDER BY tahun_tugas DESC LIMIT 1"
+                 ORDER BY tahun_tugas DESC LIMIT 1",
             )
             .fetch_optional(pool.get_ref())
             .await
@@ -936,7 +951,7 @@ pub async fn get_pasnas_public(
             let like = format!("%{}%", keyword);
             sqlx::query_as::<_, (i64,)>(
                 "SELECT COUNT(*) FROM paskibraka_nasional
-                 WHERE nama_lengkap LIKE ? AND tahun_tugas = ?"
+                 WHERE nama_lengkap LIKE ? AND tahun_tugas = ?",
             )
             .bind(&like)
             .bind(tahun)
@@ -950,7 +965,7 @@ pub async fn get_pasnas_public(
         (Some(keyword), None) => {
             let like = format!("%{}%", keyword);
             sqlx::query_as::<_, (i64,)>(
-                "SELECT COUNT(*) FROM paskibraka_nasional WHERE nama_lengkap LIKE ?"
+                "SELECT COUNT(*) FROM paskibraka_nasional WHERE nama_lengkap LIKE ?",
             )
             .bind(&like)
             .fetch_one(pool.get_ref())
@@ -960,27 +975,23 @@ pub async fn get_pasnas_public(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?
         }
-        (None, Some(tahun)) => {
-            sqlx::query_as::<_, (i64,)>(
-                "SELECT COUNT(*) FROM paskibraka_nasional WHERE tahun_tugas = ?"
-            )
-            .bind(tahun)
+        (None, Some(tahun)) => sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM paskibraka_nasional WHERE tahun_tugas = ?",
+        )
+        .bind(tahun)
+        .fetch_one(pool.get_ref())
+        .await
+        .map_err(|e| {
+            eprintln!("Count error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?,
+        (None, None) => sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM paskibraka_nasional")
             .fetch_one(pool.get_ref())
             .await
             .map_err(|e| {
                 eprintln!("Count error: {:?}", e);
                 actix_web::error::ErrorInternalServerError("Database error")
-            })?
-        }
-        (None, None) => {
-            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM paskibraka_nasional")
-                .fetch_one(pool.get_ref())
-                .await
-                .map_err(|e| {
-                    eprintln!("Count error: {:?}", e);
-                    actix_web::error::ErrorInternalServerError("Database error")
-                })?
-        }
+            })?,
     };
 
     let total_items = total_items.max(0) as u64;
@@ -989,7 +1000,11 @@ pub async fn get_pasnas_public(
     } else {
         ((total_items + (per_page as u64) - 1) / (per_page as u64)) as u32
     };
-    let current = if page > total_pages { total_pages } else { page };
+    let current = if page > total_pages {
+        total_pages
+    } else {
+        page
+    };
     let offset = ((current - 1) as u64) * (per_page as u64);
 
     // Data query dengan JOIN
@@ -1013,7 +1028,7 @@ pub async fn get_pasnas_public(
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  WHERE pn.nama_lengkap LIKE ? AND pn.tahun_tugas = ?
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
+                 LIMIT ? OFFSET ?"#,
             )
             .bind(&like)
             .bind(tahun)
@@ -1045,7 +1060,7 @@ pub async fn get_pasnas_public(
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  WHERE pn.nama_lengkap LIKE ?
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
+                 LIMIT ? OFFSET ?"#,
             )
             .bind(&like)
             .bind(per_page)
@@ -1057,9 +1072,8 @@ pub async fn get_pasnas_public(
                 actix_web::error::ErrorInternalServerError("Database error")
             })?
         }
-        (None, Some(tahun)) => {
-            sqlx::query_as::<_, PaskibrakaNasional>(
-                r#"SELECT
+        (None, Some(tahun)) => sqlx::query_as::<_, PaskibrakaNasional>(
+            r#"SELECT
                     pn.id,
                     pn.nama_lengkap,
                     pn.jk,
@@ -1075,21 +1089,19 @@ pub async fn get_pasnas_public(
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  WHERE pn.tahun_tugas = ?
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
-            )
-            .bind(tahun)
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(pool.get_ref())
-            .await
-            .map_err(|e| {
-                eprintln!("Data error: {:?}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?
-        }
-        (None, None) => {
-            sqlx::query_as::<_, PaskibrakaNasional>(
-                r#"SELECT
+                 LIMIT ? OFFSET ?"#,
+        )
+        .bind(tahun)
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| {
+            eprintln!("Data error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?,
+        (None, None) => sqlx::query_as::<_, PaskibrakaNasional>(
+            r#"SELECT
                     pn.id,
                     pn.nama_lengkap,
                     pn.jk,
@@ -1104,17 +1116,16 @@ pub async fn get_pasnas_public(
                  LEFT JOIN provinsi p ON pn.id_provinsi = p.id
                  LEFT JOIN kabupaten k ON pn.id_kabupaten = k.id
                  ORDER BY pn.id ASC
-                 LIMIT ? OFFSET ?"#
-            )
-            .bind(per_page)
-            .bind(offset)
-            .fetch_all(pool.get_ref())
-            .await
-            .map_err(|e| {
-                eprintln!("Data error: {:?}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?
-        }
+                 LIMIT ? OFFSET ?"#,
+        )
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(|e| {
+            eprintln!("Data error: {:?}", e);
+            actix_web::error::ErrorInternalServerError("Database error")
+        })?,
     };
 
     let from = if total_items == 0 { 0 } else { offset + 1 };
@@ -1139,13 +1150,11 @@ pub async fn get_pasnas_public(
 }
 
 #[get("/api/public/tahun-list/paskibraka-nasional")]
-pub async fn get_tahun_list_public(
-    pool: web::Data<MySqlPool>,
-) -> Result<impl Responder, Error> {
+pub async fn get_tahun_list_public(pool: web::Data<MySqlPool>) -> Result<impl Responder, Error> {
     let tahun_list: Vec<i32> = sqlx::query_scalar(
         "SELECT DISTINCT tahun_tugas
          FROM paskibraka_nasional
-         ORDER BY tahun_tugas DESC"
+         ORDER BY tahun_tugas DESC",
     )
     .fetch_all(pool.get_ref())
     .await
