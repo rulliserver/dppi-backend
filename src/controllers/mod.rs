@@ -23,3 +23,4 @@ pub mod userpanel;
 pub mod video_controller;
 pub mod visitor_advanced_controller;
 pub mod visitor_controller;
+pub mod paskibraka_controller;

@@ -302,6 +302,15 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::dppi_dilantik_controller::put_dppi_dilantik)
             .service(controllers::dppi_dilantik_controller::create_dppi_dilantik)
             .service(controllers::dppi_dilantik_controller::delete_dppi_dilantik)
+            //paskibraka
+            .service(controllers::paskibraka_controller::get_pasnas)
+            .service(controllers::paskibraka_controller::get_pasnas_by_id)
+            .service(controllers::paskibraka_controller::get_pasnas_public)
+            .service(controllers::paskibraka_controller::get_tahun_list)
+            .service(controllers::paskibraka_controller::get_tahun_list_public)
+            .service(controllers::paskibraka_controller::create_pasnas)
+            .service(controllers::paskibraka_controller::update_pasnas)
+            .service(controllers::paskibraka_controller::delete_pasnas)
             //pdp
             .service(controllers::pdp_controller::scope())
     })

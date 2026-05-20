@@ -3539,11 +3539,7 @@ pub async fn get_pdp_detail_public(
         q,
     );
 
-    let (data, total) = fetch_pdp_by_provinsi(
-        &pool, &params.id, &kab, 
-        limit, offset, &q,
-    )
-    .await?;
+    let (data, total) = fetch_pdp_by_provinsi(&pool, &params.id, &kab, limit, offset, &q).await?;
 
     let total_pages = ((total as f64) / (limit as f64)).ceil() as u32;
 
@@ -3653,7 +3649,7 @@ async fn fetch_pdp_by_provinsi(
         query_builder.push(")");
     }
 
-    query_builder.push(" ORDER BY p.id_kabupaten DESC, p.nama_lengkap ASC LIMIT ");
+    query_builder.push(" ORDER BY p.id_kabupaten ASC, p.nama_lengkap ASC LIMIT ");
     query_builder.push_bind(limit);
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
