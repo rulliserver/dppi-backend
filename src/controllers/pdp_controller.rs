@@ -931,14 +931,6 @@ pub async fn list_pdp_verified(
         Vec::new()
     };
 
-    log::debug!(
-        "Results: {}/{} records, page {}/{}",
-        paginated_data.len(),
-        total,
-        page,
-        total_pages
-    );
-
     #[derive(Serialize)]
     struct PaginatedResponse<T> {
         data: Vec<T>,
@@ -972,13 +964,6 @@ async fn fetch_all_pdp_verified(
     provinsi_id: Option<i32>,
     kabupaten_id: Option<i32>,
 ) -> Result<Vec<Pdp>, Error> {
-    log::debug!("🔍 Starting fetch_all_pdp_verified");
-    log::debug!(
-        "📊 Filter params - provinsi_id: {:?}, kabupaten_id: {:?}",
-        provinsi_id,
-        kabupaten_id
-    );
-
     let mut sql = String::from(
         "SELECT
             p.id,
@@ -1028,7 +1013,7 @@ async fn fetch_all_pdp_verified(
          LEFT JOIN kabupaten kd ON p.id_kabupaten_domisili = kd.id
          LEFT JOIN provinsi pp ON p.id_provinsi = pp.id
          LEFT JOIN kabupaten kp ON p.id_kabupaten = kp.id
-         WHERE p.status = 'Verified' or p.status='Simental'",
+         WHERE p.status = 'Verified' ",
     );
 
     // Tambahkan kondisi WHERE untuk filter wilayah - CARA SAMA
@@ -1048,8 +1033,6 @@ async fn fetch_all_pdp_verified(
 
     sql.push_str(" ORDER BY p.id DESC");
 
-    log::debug!("📝 Final SQL: {}", sql);
-
     let encrypted_rows: Vec<EncryptedPdp> = sqlx::query_as(&sql)
         .fetch_all(pool.get_ref())
         .await
@@ -1057,11 +1040,6 @@ async fn fetch_all_pdp_verified(
             log::error!("❌ Error fetching all PDP Verified: {:?}", e);
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
-
-    log::debug!(
-        "✅ Fetched {} PDP Verified records from database",
-        encrypted_rows.len()
-    );
 
     // Dekripsi semua data
     let mut decrypted_rows = Vec::new();
@@ -1075,7 +1053,7 @@ async fn fetch_all_pdp_verified(
             }
         }
     }
-
+    log::debug!("📝 Final SQL: {}", sql);
     log::debug!("🔓 Successfully decrypted {} records", decrypted_rows.len());
     Ok(decrypted_rows)
 }
@@ -3142,27 +3120,22 @@ async fn fetch_all_pdp_verified_all(
          LEFT JOIN kabupaten kd ON p.id_kabupaten_domisili = kd.id
          LEFT JOIN provinsi pp ON p.id_provinsi = pp.id
          LEFT JOIN kabupaten kp ON p.id_kabupaten = kp.id
-         WHERE p.status = 'Verified'",
+         WHERE p.status = 'Verified' ",
     );
 
-    // Tambahkan kondisi WHERE untuk filter wilayah
     if provinsi_id.is_some() || kabupaten_id.is_some() {
         sql.push_str(" AND ");
-
+        let mut conditions = Vec::new();
         if let Some(prov_id) = provinsi_id {
-            sql.push_str(&format!("p.id_provinsi = {}", prov_id));
-
-            if let Some(kab_id) = kabupaten_id {
-                sql.push_str(&format!(" AND p.id_kabupaten = {}", kab_id));
-            }
-        } else if let Some(kab_id) = kabupaten_id {
-            sql.push_str(&format!("p.id_kabupaten = {}", kab_id));
+            conditions.push(format!("p.id_provinsi = {}", prov_id));
         }
+        if let Some(kab_id) = kabupaten_id {
+            conditions.push(format!("p.id_kabupaten = {}", kab_id));
+        }
+        sql.push_str(&conditions.join(" AND "));
     }
 
     sql.push_str(" ORDER BY p.id DESC");
-
-    log::debug!("📝 Final SQL: {}", sql);
 
     let encrypted_rows: Vec<EncryptedPdp> = sqlx::query_as(&sql)
         .fetch_all(pool.get_ref())
@@ -3171,11 +3144,6 @@ async fn fetch_all_pdp_verified_all(
             log::error!("❌ Error fetching all PDP Verified: {:?}", e);
             actix_web::error::ErrorInternalServerError("Database error")
         })?;
-
-    log::debug!(
-        "✅ Fetched {} PDP Verified records from database",
-        encrypted_rows.len()
-    );
 
     // Dekripsi semua data
     let mut decrypted_rows = Vec::new();
@@ -3189,8 +3157,11 @@ async fn fetch_all_pdp_verified_all(
             }
         }
     }
-
-    log::debug!("🔓 Successfully decrypted {} records", decrypted_rows.len());
+    log::debug!("📝 Final SQL: {}", sql);
+    log::debug!(
+        "🔓 Successfully di decrypt {} records",
+        decrypted_rows.len()
+    );
     Ok(decrypted_rows)
 }
 

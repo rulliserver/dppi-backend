@@ -114,25 +114,7 @@ pub async fn get_pasnas(
     per_page = per_page.clamp(1, 100);
 
     let q = query.q.clone();
-    let tahun_filter = match query.tahun_tugas {
-        Some(tahun) => Some(tahun),
-        None => {
-            // Get latest tahun_tugas as default
-            let latest_tahun: Option<i32> = sqlx::query_scalar(
-                "SELECT DISTINCT tahun_tugas FROM paskibraka_nasional
-                 WHERE tahun_tugas IS NOT NULL
-                 ORDER BY tahun_tugas DESC LIMIT 1",
-            )
-            .fetch_optional(pool.get_ref())
-            .await
-            .map_err(|e| {
-                eprintln!("Error getting latest tahun: {:?}", e);
-                actix_web::error::ErrorInternalServerError("Database error")
-            })?;
-            latest_tahun
-        }
-    };
-
+    let tahun_filter = query.tahun_tugas; 
     // Count query
     let (total_items,): (i64,) = match (&q, tahun_filter) {
         (Some(keyword), Some(tahun)) => {
