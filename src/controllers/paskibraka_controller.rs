@@ -8,9 +8,11 @@ use futures::TryStreamExt;
 use mime::{IMAGE_JPEG, IMAGE_PNG};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::{MySql, QueryBuilder};
 use sqlx::{MySqlPool, prelude::FromRow};
 use std::fs;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -46,8 +48,9 @@ pub struct PaskibrakaNasionalRequest {
     pub photo: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct UpdatePaskibrakaRequest {
+    pub id: i32,
     pub nama_lengkap: Option<String>,
     pub jk: Option<String>,
     pub id_provinsi: Option<i32>,
@@ -90,6 +93,77 @@ fn sanitize_input(input: &str) -> String {
     clean(input).to_string()
 }
 
+//helper untuk upload photo
+async fn read_text_field(mut field: actix_multipart::Field) -> Result<String, actix_web::Error> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = field
+        .try_next()
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?
+    {
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&bytes).trim().to_string())
+}
+
+async fn save_photo_field(
+    mut field: actix_multipart::Field,
+    dir: &str,
+) -> Result<String, actix_web::Error> {
+    let upload_dir = Path::new(dir);
+    if !upload_dir.exists() {
+        fs::create_dir_all(upload_dir).map_err(actix_web::error::ErrorInternalServerError)?;
+    }
+    // deteksi ekstensi sederhana dari content-type
+    let ext = field
+        .content_type()
+        .map(|ct| match (ct.type_().as_str(), ct.subtype().as_str()) {
+            ("image", "png") => "png",
+            ("image", "jpeg") | ("image", "jpg") => "jpg",
+            ("image", "webp") => "webp",
+            _ => "png",
+        })
+        .unwrap_or("png");
+
+    let filename = format!(
+        "paskibraka_nasional_{}.{}",
+        chrono::Utc::now().timestamp_millis(),
+        ext
+    );
+    let filepath = upload_dir.join(&filename);
+
+    let mut f = fs::File::create(&filepath).map_err(actix_web::error::ErrorInternalServerError)?;
+    while let Some(chunk) = field
+        .try_next()
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?
+    {
+        f.write_all(&chunk)
+            .map_err(actix_web::error::ErrorInternalServerError)?;
+    }
+    Ok(format!("{}/{}", dir.trim_start_matches("./"), filename))
+}
+
+fn is_safe_upload_path(rel: &str) -> bool {
+    // Hindari traversal: hanya izinkan path yang diawali "uploads/"
+    rel.starts_with("uploads/")
+}
+
+fn to_fs_path(rel: &str) -> PathBuf {
+    // Simpel: gabungkan dengan root project. Sesuaikan kalau foldernya beda.
+    Path::new("./").join(rel)
+}
+
+pub fn remove_file_if_exists(rel: &str) {
+    if !is_safe_upload_path(rel) {
+        return;
+    }
+    let p = to_fs_path(rel);
+    if p.exists() {
+        let _ = fs::remove_file(&p);
+    }
+}
+
 #[get("/api/adminpanel/paskibraka-nasional")]
 pub async fn get_pasnas(
     pool: web::Data<MySqlPool>,
@@ -114,7 +188,7 @@ pub async fn get_pasnas(
     per_page = per_page.clamp(1, 100);
 
     let q = query.q.clone();
-    let tahun_filter = query.tahun_tugas; 
+    let tahun_filter = query.tahun_tugas;
     // Count query
     let (total_items,): (i64,) = match (&q, tahun_filter) {
         (Some(keyword), Some(tahun)) => {
@@ -551,247 +625,190 @@ pub async fn get_pasnas_by_id(
 #[put("/api/adminpanel/paskibraka-nasional/{id}")]
 pub async fn update_pasnas(
     pool: web::Data<MySqlPool>,
-    mut payload: Multipart,
     req: HttpRequest,
-    id: web::Path<i32>,
+    path: web::Path<i32>,
+    mut payload: Multipart,
 ) -> Result<impl Responder, Error> {
-    // Auth check
-    let claims =
+    let _claims =
         auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
-    if !["Superadmin", "Administrator"].contains(&claims.role.as_str()) {
+    if !["Superadmin", "Administrator"].contains(&_claims.role.as_str()) {
         return Err(actix_web::error::ErrorForbidden(
-            "Hanya Superadmin atau Administrator yang dapat mengakses",
+            "Hanya Superadmin/Administrator",
         ));
     }
 
-    let item_id = id.into_inner();
+    let id = path.into_inner();
 
-    // Check if exists
-    let exists = sqlx::query("SELECT id FROM paskibraka_nasional WHERE id = ?")
-        .bind(item_id)
-        .fetch_optional(pool.get_ref())
+    let mut nama_lengkap: Option<String> = None; // presence = Some
+    let mut jk: Option<String> = None; // presence = Some
+    let mut id_provinsi: Option<i32> = None; // presence = Some
+    let mut id_kabupaten: Option<i32> = None; // presence = Some
+    let mut asal_sma: Option<String> = None; // presence = Some
+    let mut tahun_tugas: Option<i32> = None; // presence = Some
+    let mut photo_new_path: Option<String> = None;
+    let mut photo_remove = false;
+
+    while let Some(field) = payload
+        .try_next()
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?
-        .is_some();
+        .map_err(actix_web::error::ErrorInternalServerError)?
+    {
+        let name = field
+            .content_disposition()
+            .and_then(|cd| cd.get_name())
+            .unwrap_or("");
 
-    if !exists {
-        return Ok(HttpResponse::NotFound().json(ApiResponse {
-            success: false,
-            message: "Data tidak ditemukan".to_string(),
-            data: None::<()>,
-        }));
-    }
-
-    let mut update_data = UpdatePaskibrakaRequest {
-        nama_lengkap: None,
-        jk: None,
-        id_provinsi: None,
-        id_kabupaten: None,
-        asal_sma: None,
-        tahun_tugas: None,
-        photo: None,
-    };
-
-    // Parse multipart form
-    while let Ok(Some(mut field)) = payload.try_next().await {
-        let name = field.name().unwrap_or("").to_string();
-
-        match name.as_str() {
-            "photo" => {
-                let ct = field.content_type();
-                if let Some(content_type) = ct {
-                    if content_type == &IMAGE_JPEG || content_type == &IMAGE_PNG {
-                        let ext = if content_type == &IMAGE_PNG {
-                            "png"
-                        } else {
-                            "jpg"
-                        };
-                        let filename = format!(
-                            "photo_{}_{}.{}",
-                            Utc::now().timestamp(),
-                            Uuid::new_v4(),
-                            ext
-                        );
-
-                        let upload_photo_dir = "uploads/assets/images/paskibraka";
-                        fs::create_dir_all(upload_photo_dir).ok();
-                        let filepath = format!("{}/{}", upload_photo_dir, filename);
-
-                        // Hapus photo lama jika ada
-                        let old_photo: Option<String> = sqlx::query_scalar(
-                            "SELECT photo FROM paskibraka_nasional WHERE id = ?",
-                        )
-                        .bind(item_id)
-                        .fetch_optional(pool.get_ref())
-                        .await
-                        .map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))?;
-
-                        if let Some(old_path) = old_photo {
-                            if fs::metadata(&old_path).is_ok() {
-                                let _ = fs::remove_file(&old_path);
-                            }
-                        }
-
-                        let mut f = fs::File::create(&filepath).map_err(|_e| {
-                            actix_web::error::ErrorInternalServerError("Gagal membuat file")
-                        })?;
-
-                        let mut file_size: u64 = 0;
-                        while let Ok(Some(chunk)) = field.try_next().await {
-                            file_size += chunk.len() as u64;
-                            if file_size > 10 * 1024 * 1024 {
-                                return Ok(HttpResponse::BadRequest().json(ApiResponse {
-                                    success: false,
-                                    message: "Ukuran foto maksimal 10MB".to_string(),
-                                    data: None::<()>,
-                                }));
-                            }
-                            f.write_all(&chunk).map_err(|e| {
-                                eprintln!("Gagal write file: {:?}", e);
-                                actix_web::error::ErrorInternalServerError("Gagal menulis foto")
-                            })?;
-                        }
-                        update_data.photo = Some(filepath);
-                    } else {
-                        return Ok(HttpResponse::BadRequest().json(ApiResponse {
-                            success: false,
-                            message: "Format foto harus JPEG atau PNG".to_string(),
-                            data: None::<()>,
-                        }));
-                    }
-                }
-            }
+        match name {
             "nama_lengkap" => {
-                let mut text = String::new();
-                while let Ok(Some(chunk)) = field.try_next().await {
-                    text.push_str(&String::from_utf8_lossy(&chunk));
-                }
-                if !text.is_empty() {
-                    update_data.nama_lengkap = Some(sanitize_input(&text));
-                }
+                nama_lengkap = Some(read_text_field(field).await?);
             }
             "jk" => {
-                let mut text = String::new();
-                while let Ok(Some(chunk)) = field.try_next().await {
-                    text.push_str(&String::from_utf8_lossy(&chunk));
-                }
-                if !text.is_empty() {
-                    update_data.jk = Some(sanitize_input(&text));
-                }
+                let v = read_text_field(field).await?;
+                jk = Some(v);
             }
             "id_provinsi" => {
-                let mut text = String::new();
-                while let Ok(Some(chunk)) = field.try_next().await {
-                    text.push_str(&String::from_utf8_lossy(&chunk));
-                }
-                if !text.is_empty() {
-                    update_data.id_provinsi = Some(text.parse().unwrap_or(0));
-                }
+                id_provinsi = None;
             }
             "id_kabupaten" => {
-                let mut text = String::new();
-                while let Ok(Some(chunk)) = field.try_next().await {
-                    text.push_str(&String::from_utf8_lossy(&chunk));
-                }
-                if !text.is_empty() {
-                    update_data.id_kabupaten = Some(text.parse().unwrap_or(0));
-                }
+                id_kabupaten = None;
             }
             "asal_sma" => {
-                let mut text = String::new();
-                while let Ok(Some(chunk)) = field.try_next().await {
-                    text.push_str(&String::from_utf8_lossy(&chunk));
-                }
-                if !text.is_empty() {
-                    update_data.asal_sma = Some(sanitize_input(&text));
-                }
+                let v = read_text_field(field).await?;
+                asal_sma = Some(v);
             }
             "tahun_tugas" => {
-                let mut text = String::new();
-                while let Ok(Some(chunk)) = field.try_next().await {
-                    text.push_str(&String::from_utf8_lossy(&chunk));
-                }
-                if !text.is_empty() {
-                    update_data.tahun_tugas = Some(text.parse().unwrap_or(0));
-                }
+                tahun_tugas = None;
+            }
+            "photo" => {
+                photo_new_path =
+                    Some(save_photo_field(field, "./uploads/assets/paskibraka-nasional").await?);
+            }
+            "photo_remove" => {
+                let v = read_text_field(field).await?;
+                photo_remove = v == "1" || v.eq_ignore_ascii_case("true");
             }
             _ => {}
         }
     }
+    // Ambil path foto lama sebelum proses update
+    let (old_photo_opt,): (Option<String>,) =
+        sqlx::query_as("SELECT photo FROM paskibraka_nasional WHERE id = ?")
+            .bind(id)
+            .fetch_one(pool.get_ref())
+            .await
+            .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    // Check if any field to update
-    if update_data.nama_lengkap.is_none()
-        && update_data.jk.is_none()
-        && update_data.id_provinsi.is_none()
-        && update_data.id_kabupaten.is_none()
-        && update_data.asal_sma.is_none()
-        && update_data.tahun_tugas.is_none()
-        && update_data.photo.is_none()
-    {
-        return Ok(HttpResponse::BadRequest().json(ApiResponse {
-            success: false,
-            message: "Tidak ada data yang diupdate".to_string(),
-            data: None::<()>,
-        }));
-    }
+    let mut qb: QueryBuilder<MySql> = QueryBuilder::new("UPDATE paskibraka_nasional SET ");
+    let mut first = true;
+    let mut has_any = false;
 
-    // Build dynamic update query - Cara manual yang lebih aman
-    let mut set_clauses = Vec::new();
-    let mut params: Vec<String> = Vec::new();
-
-    if let Some(nama) = &update_data.nama_lengkap {
-        set_clauses.push("nama_lengkap = ?".to_string());
-        params.push(nama.clone());
-    }
-    if let Some(jk) = &update_data.jk {
-        set_clauses.push("jk = ?".to_string());
-        params.push(jk.clone());
-    }
-    if let Some(provinsi) = &update_data.id_provinsi {
-        set_clauses.push("id_provinsi = ?".to_string());
-        params.push(provinsi.to_string());
-    }
-    if let Some(kabupaten) = &update_data.id_kabupaten {
-        set_clauses.push("id_kabupaten = ?".to_string());
-        params.push(kabupaten.to_string());
-    }
-    if let Some(sma) = &update_data.asal_sma {
-        set_clauses.push("asal_sma = ?".to_string());
-        params.push(sma.clone());
-    }
-    if let Some(tahun) = &update_data.tahun_tugas {
-        set_clauses.push("tahun_tugas = ?".to_string());
-        params.push(tahun.to_string());
-    }
-    if let Some(photo) = &update_data.photo {
-        set_clauses.push("photo = ?".to_string());
-        params.push(photo.clone());
+    if let Some(v) = nama_lengkap {
+        if !first {
+            qb.push(", ");
+        }
+        first = false;
+        has_any = true;
+        qb.push("nama_lengkap = ").push_bind(v);
     }
 
-    let set_clause = set_clauses.join(", ");
-    let query_str = format!("UPDATE paskibraka_nasional SET {} WHERE id = ?", set_clause);
-
-    // Execute dengan sqlx query builder
-    let mut query = sqlx::query(&query_str);
-
-    // Bind semua parameter
-    for param in params {
-        query = query.bind(param);
+    if let Some(v) = jk {
+        if !first {
+            qb.push(", ");
+        }
+        first = false;
+        has_any = true;
+        qb.push("jk = ").push_bind(v);
     }
-    // Bind ID
-    query = query.bind(item_id);
 
-    // Execute query
-    query.execute(pool.get_ref()).await.map_err(|e| {
-        eprintln!("Update error: {:?}", e);
-        actix_web::error::ErrorInternalServerError(format!("Gagal mengupdate data: {}", e))
-    })?;
+    if let Some(v) = id_provinsi {
+        if !first {
+            qb.push(", ");
+        }
+        first = false;
+        has_any = true;
+        qb.push("id_provinsi = ").push_bind(v);
+    }
 
-    Ok(HttpResponse::Ok().json(ApiResponse {
-        success: true,
-        message: "Data berhasil diupdate".to_string(),
-        data: Some(json!({ "id": item_id })),
-    }))
+    if let Some(v) = id_kabupaten {
+        if !first {
+            qb.push(", ");
+        }
+        first = false;
+        has_any = true;
+        qb.push("id_kabupaten = ").push_bind(v);
+    }
+
+    if let Some(v) = asal_sma {
+        if !first {
+            qb.push(", ");
+        }
+        first = false;
+        has_any = true;
+        qb.push("asal_sma = ").push_bind(v);
+    }
+
+    if let Some(v) = tahun_tugas {
+        if !first {
+            qb.push(", ");
+        }
+        first = false;
+        has_any = true;
+        qb.push("tahun_tugas = ").push_bind(v);
+    }
+
+    let mut remove_old = false;
+
+    if photo_remove {
+        if !first {
+            qb.push(", ");
+        }
+        has_any = true;
+        qb.push("photo = NULL");
+        if old_photo_opt.is_some() {
+            remove_old = true;
+        }
+    } else if let Some(ref p) = photo_new_path {
+        if !first {
+            qb.push(", ");
+        }
+        has_any = true;
+        qb.push("photo = ").push_bind(p);
+        if let Some(ref oldp) = old_photo_opt {
+            if oldp != p {
+                remove_old = true;
+            }
+        }
+    }
+
+    if !has_any {
+        return Ok(HttpResponse::BadRequest().body("Tidak ada field untuk diupdate"));
+    }
+
+    qb.push(" WHERE id = ").push_bind(id);
+
+    // Eksekusi update
+    qb.build()
+        .execute(pool.get_ref())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    // Hapus file lama
+    if remove_old {
+        if let Some(oldp) = old_photo_opt {
+            remove_file_if_exists(&oldp);
+        }
+    }
+
+    // Ambil data terbaru
+    let updated = sqlx::query_as::<_, UpdatePaskibrakaRequest>(
+        "SELECT id, nama_lengkap, jk, id_provinsi, id_kabupaten, asal_sma, tahun_tugas,  photo FROM paskibraka_nasional WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    Ok(HttpResponse::Ok().json(updated))
 }
 
 #[derive(sqlx::FromRow)]
