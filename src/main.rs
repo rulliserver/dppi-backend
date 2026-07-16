@@ -233,6 +233,7 @@ async fn main() -> std::io::Result<()> {
             //pemusatan
             .service(controllers::pemusatan_controller::get_candidates)
             .service(controllers::pemusatan_controller::submit_pamong)
+            .service(controllers::pemusatan_controller::get_pamong_journal)
             .service(controllers::pemusatan_controller::submit_pelatih)
             .service(controllers::pemusatan_controller::submit_dokter)
             .service(controllers::pemusatan_controller::get_jurnal)

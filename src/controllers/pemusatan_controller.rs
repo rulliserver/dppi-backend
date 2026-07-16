@@ -8,45 +8,92 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 pub struct PamongInput {
     pub id_paskibraka: i32,
-    pub tanggal: String, // YYYY-MM-DD
-    pub nilai_ketaqwaan: i32,
-    pub nilai_niat_kemauan: i32,
-    pub nilai_keberanian: i32,
-    pub nilai_komunikasi: i32,
-    pub nilai_keterbukaan: i32,
-    pub nilai_ketelitian: i32,
-    pub nilai_kesadaran: i32,
-    pub nilai_toleransi: i32,
-    pub nilai_keikhlasan: i32,
-    pub nilai_mempercayai: i32,
-    pub nilai_jiwa_korsa: i32,
-    pub nilai_kekeluargaan: i32,
-    pub nilai_persatuan_kesatuan: i32,
-    pub nilai_ketahanan: i32,
-    pub nilai_kekompakan_keseragaman: i32,
-    pub nilai_ketertiban: i32,
-    pub nilai_kesopanan: i32,
-    pub nilai_kesigapan: i32,
-    pub nilai_kewajaran: i32,
-    pub nilai_ketanggapan: i32,
-    pub nilai_ketenangan: i32,
-    pub nilai_menyimak: i32,
-    pub nilai_kebiasaan: i32,
-    pub nilai_mengelola_stres: i32,
-    pub nilai_menghargai_waktu: i32,
-    pub nilai_berbicara: i32,
-    pub nilai_berjalan: i32,
-    pub nilai_makan_minum: i32,
-    pub nilai_kehadiran: i32,
-    pub nilai_hubungan_interpersonal: i32,
-    pub nilai_ketaatan: i32,
-    pub nilai_istirahat_malam: i32,
-    pub nilai_keindahan: i32,
-    pub nilai_kerapihan: i32,
-    pub nilai_kebersihan: i32,
-    pub nilai_berpakaian: i32,
-    pub nilai_penampilan_rambut: i32,
-    pub nilai_bersih_rapih_wangi: i32,
+    pub tanggal: String,
+    pub nilai_ketaqwaan: Option<i32>,
+    pub nilai_niat_kemauan: Option<i32>,
+    pub nilai_keberanian: Option<i32>,
+    pub nilai_komunikasi: Option<i32>,
+    pub nilai_keterbukaan: Option<i32>,
+    pub nilai_ketelitian: Option<i32>,
+    pub nilai_kesadaran: Option<i32>,
+    pub nilai_toleransi: Option<i32>,
+    pub nilai_keikhlasan: Option<i32>,
+    pub nilai_mempercayai: Option<i32>,
+    pub nilai_jiwa_korsa: Option<i32>,
+    pub nilai_kekeluargaan: Option<i32>,
+    pub nilai_persatuan_kesatuan: Option<i32>,
+    pub nilai_ketahanan: Option<i32>,
+    pub nilai_kekompakan_keseragaman: Option<i32>,
+    pub nilai_ketertiban: Option<i32>,
+    pub nilai_kesopanan: Option<i32>,
+    pub nilai_kesigapan: Option<i32>,
+    pub nilai_kewajaran: Option<i32>,
+    pub nilai_ketanggapan: Option<i32>,
+    pub nilai_ketenangan: Option<i32>,
+    pub nilai_menyimak: Option<i32>,
+    pub nilai_kebiasaan: Option<i32>,
+    pub nilai_mengelola_stres: Option<i32>,
+    pub nilai_menghargai_waktu: Option<i32>,
+    pub nilai_berbicara: Option<i32>,
+    pub nilai_berjalan: Option<i32>,
+    pub nilai_makan_minum: Option<i32>,
+    pub nilai_kehadiran: Option<i32>,
+    pub nilai_hubungan_interpersonal: Option<i32>,
+    pub nilai_ketaatan: Option<i32>,
+    pub nilai_istirahat_malam: Option<i32>,
+    pub nilai_keindahan: Option<i32>,
+    pub nilai_kerapihan: Option<i32>,
+    pub nilai_kebersihan: Option<i32>,
+    pub nilai_berpakaian: Option<i32>,
+    pub nilai_penampilan_rambut: Option<i32>,
+    pub nilai_bersih_rapih_wangi: Option<i32>,
+    pub catatan: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct PamongJournal {
+    pub id: String,
+    pub id_paskibraka: i32,
+    pub id_petugas: String,
+    pub tanggal: String,
+    pub nilai_ketaqwaan: Option<i32>,
+    pub nilai_niat_kemauan: Option<i32>,
+    pub nilai_keberanian: Option<i32>,
+    pub nilai_komunikasi: Option<i32>,
+    pub nilai_keterbukaan: Option<i32>,
+    pub nilai_ketelitian: Option<i32>,
+    pub nilai_kesadaran: Option<i32>,
+    pub nilai_toleransi: Option<i32>,
+    pub nilai_keikhlasan: Option<i32>,
+    pub nilai_mempercayai: Option<i32>,
+    pub nilai_jiwa_korsa: Option<i32>,
+    pub nilai_kekeluargaan: Option<i32>,
+    pub nilai_persatuan_kesatuan: Option<i32>,
+    pub nilai_ketahanan: Option<i32>,
+    pub nilai_kekompakan_keseragaman: Option<i32>,
+    pub nilai_ketertiban: Option<i32>,
+    pub nilai_kesopanan: Option<i32>,
+    pub nilai_kesigapan: Option<i32>,
+    pub nilai_kewajaran: Option<i32>,
+    pub nilai_ketanggapan: Option<i32>,
+    pub nilai_ketenangan: Option<i32>,
+    pub nilai_menyimak: Option<i32>,
+    pub nilai_kebiasaan: Option<i32>,
+    pub nilai_mengelola_stres: Option<i32>,
+    pub nilai_menghargai_waktu: Option<i32>,
+    pub nilai_berbicara: Option<i32>,
+    pub nilai_berjalan: Option<i32>,
+    pub nilai_makan_minum: Option<i32>,
+    pub nilai_kehadiran: Option<i32>,
+    pub nilai_hubungan_interpersonal: Option<i32>,
+    pub nilai_ketaatan: Option<i32>,
+    pub nilai_istirahat_malam: Option<i32>,
+    pub nilai_keindahan: Option<i32>,
+    pub nilai_kerapihan: Option<i32>,
+    pub nilai_kebersihan: Option<i32>,
+    pub nilai_berpakaian: Option<i32>,
+    pub nilai_penampilan_rambut: Option<i32>,
+    pub nilai_bersih_rapih_wangi: Option<i32>,
     pub catatan: Option<String>,
 }
 
@@ -97,7 +144,7 @@ pub struct DokterInput {
     pub keluhan: Option<String>,
     pub diagnosa: Option<String>,
     pub terapi_obat: Option<String>,
-    pub rekomendasi_istirahat: String, // 'Bisa Latihan', 'Latihan Ringan', 'Istirahat Total'
+    pub rekomendasi_istirahat: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -123,10 +170,16 @@ pub async fn get_candidates(
     pool: web::Data<MySqlPool>,
     query: web::Query<FilterParams>,
 ) -> Result<impl Responder, Error> {
-    let claims = auth::verify_jwt(&req)
-        .map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
 
-    let allowed_roles = ["Pamong", "Pelatih", "Dokter", "Admin Pemusatan", "Superadmin"];
+    let allowed_roles = [
+        "Pamong",
+        "Pelatih",
+        "Dokter",
+        "Admin Pemusatan",
+        "Superadmin",
+    ];
     if !allowed_roles.contains(&claims.role.as_str()) {
         return Err(actix_web::error::ErrorForbidden("Akses ditolak"));
     }
@@ -161,8 +214,8 @@ pub async fn submit_pamong(
     pool: web::Data<MySqlPool>,
     payload: web::Json<PamongInput>,
 ) -> Result<impl Responder, Error> {
-    let claims = auth::verify_jwt(&req)
-        .map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
 
     let allowed_roles = ["Pamong", "Admin Pemusatan", "Superadmin"];
     if !allowed_roles.contains(&claims.role.as_str()) {
@@ -288,7 +341,7 @@ pub async fn submit_pamong(
         .await
         .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    // Log this action using our activity log
+    // Log this action
     crate::utils::log_activity(
         pool.get_ref(),
         Some(&claims.user_id),
@@ -297,13 +350,70 @@ pub async fn submit_pamong(
         "SUBMIT_PAMONG_JOURNAL",
         "PEMUSATAN",
         "SUCCESS",
-        Some(&format!("Saved Pamong journal for capaska {}", payload.id_paskibraka)),
+        Some(&format!(
+            "Saved Pamong journal for capaska {}",
+            payload.id_paskibraka
+        )),
         Some(&req),
-    ).await;
+    )
+    .await;
 
-    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "Jurnal Pamong berhasil disimpan" })))
+    Ok(HttpResponse::Ok()
+        .json(json!({ "status": "success", "message": "Jurnal Pamong berhasil disimpan" })))
 }
 
+#[get("/api/pemusatan/pamong/{id}/{tanggal}")]
+pub async fn get_pamong_journal(
+    req: HttpRequest,
+    pool: web::Data<MySqlPool>,
+    path: web::Path<(i32, String)>,
+) -> Result<impl Responder, Error> {
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+
+    let allowed_roles = [
+        "Pamong",
+        "Pelatih",
+        "Dokter",
+        "Admin Pemusatan",
+        "Superadmin",
+    ];
+    if !allowed_roles.contains(&claims.role.as_str()) {
+        return Err(actix_web::error::ErrorForbidden("Akses ditolak"));
+    }
+
+    let (id_paskibraka, tanggal) = path.into_inner();
+
+    let query = r#"
+        SELECT
+            id, id_paskibraka, id_petugas, tanggal,
+            nilai_ketaqwaan, nilai_niat_kemauan, nilai_keberanian, nilai_komunikasi,
+            nilai_keterbukaan, nilai_ketelitian, nilai_kesadaran, nilai_toleransi,
+            nilai_keikhlasan, nilai_mempercayai, nilai_jiwa_korsa, nilai_kekeluargaan,
+            nilai_persatuan_kesatuan, nilai_ketahanan, nilai_kekompakan_keseragaman, nilai_ketertiban,
+            nilai_kesopanan, nilai_kesigapan, nilai_kewajaran, nilai_ketanggapan,
+            nilai_ketenangan, nilai_menyimak, nilai_kebiasaan, nilai_mengelola_stres,
+            nilai_menghargai_waktu, nilai_berbicara, nilai_berjalan, nilai_makan_minum,
+            nilai_kehadiran, nilai_hubungan_interpersonal, nilai_ketaatan, nilai_istirahat_malam,
+            nilai_keindahan, nilai_kerapihan, nilai_kebersihan, nilai_berpakaian,
+            nilai_penampilan_rambut, nilai_bersih_rapih_wangi, catatan
+        FROM jurnal_pemusatan_pamong
+        WHERE id_paskibraka = ? AND tanggal = ?
+        LIMIT 1
+    "#;
+
+    let result: Option<PamongJournal> = sqlx::query_as(query)
+        .bind(id_paskibraka)
+        .bind(&tanggal)
+        .fetch_optional(pool.get_ref())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    match result {
+        Some(data) => Ok(HttpResponse::Ok().json(data)),
+        None => Ok(HttpResponse::NotFound().json(json!({ "message": "Data tidak ditemukan" }))),
+    }
+}
 // 3. Submit Pelatih Log
 #[post("/api/pemusatan/pelatih")]
 pub async fn submit_pelatih(
@@ -311,8 +421,8 @@ pub async fn submit_pelatih(
     pool: web::Data<MySqlPool>,
     payload: web::Json<PelatihInput>,
 ) -> Result<impl Responder, Error> {
-    let claims = auth::verify_jwt(&req)
-        .map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
 
     let allowed_roles = ["Pelatih", "Admin Pemusatan", "Superadmin"];
     if !allowed_roles.contains(&claims.role.as_str()) {
@@ -428,11 +538,16 @@ pub async fn submit_pelatih(
         "SUBMIT_PELATIH_JOURNAL",
         "PEMUSATAN",
         "SUCCESS",
-        Some(&format!("Saved Pelatih journal for capaska {}", payload.id_paskibraka)),
+        Some(&format!(
+            "Saved Pelatih journal for capaska {}",
+            payload.id_paskibraka
+        )),
         Some(&req),
-    ).await;
+    )
+    .await;
 
-    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "Jurnal Pelatih berhasil disimpan" })))
+    Ok(HttpResponse::Ok()
+        .json(json!({ "status": "success", "message": "Jurnal Pelatih berhasil disimpan" })))
 }
 
 // 4. Submit Dokter Log
@@ -442,8 +557,8 @@ pub async fn submit_dokter(
     pool: web::Data<MySqlPool>,
     payload: web::Json<DokterInput>,
 ) -> Result<impl Responder, Error> {
-    let claims = auth::verify_jwt(&req)
-        .map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
 
     let allowed_roles = ["Dokter", "Admin Pemusatan", "Superadmin"];
     if !allowed_roles.contains(&claims.role.as_str()) {
@@ -488,11 +603,16 @@ pub async fn submit_dokter(
         "SUBMIT_DOKTER_JOURNAL",
         "PEMUSATAN",
         "SUCCESS",
-        Some(&format!("Saved Dokter journal for capaska {}", payload.id_paskibraka)),
+        Some(&format!(
+            "Saved Dokter journal for capaska {}",
+            payload.id_paskibraka
+        )),
         Some(&req),
-    ).await;
+    )
+    .await;
 
-    Ok(HttpResponse::Ok().json(json!({ "status": "success", "message": "Jurnal Dokter berhasil disimpan" })))
+    Ok(HttpResponse::Ok()
+        .json(json!({ "status": "success", "message": "Jurnal Dokter berhasil disimpan" })))
 }
 
 // 5. Fetch Full Profiling Journal for a Candidate
@@ -502,8 +622,8 @@ pub async fn get_jurnal(
     pool: web::Data<MySqlPool>,
     path: web::Path<i32>,
 ) -> Result<impl Responder, Error> {
-    let claims = auth::verify_jwt(&req)
-        .map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
 
     let allowed_roles = ["Admin Pemusatan", "Superadmin"];
     if !allowed_roles.contains(&claims.role.as_str()) {
@@ -522,12 +642,17 @@ pub async fn get_jurnal(
 
     let candidate = match profile {
         Some(c) => c,
-        None => return Ok(HttpResponse::NotFound().json(json!({ "message": "Peserta tidak ditemukan" }))),
+        None => {
+            return Ok(
+                HttpResponse::NotFound().json(json!({ "message": "Peserta tidak ditemukan" }))
+            );
+        }
     };
 
     // 2. Fetch Selection scores
     // a. Wawancara
-    let w_sql = "SELECT nilai1, nilai2, nilai3, nilai4, status FROM wawancara WHERE id_capaska = ? LIMIT 1";
+    let w_sql =
+        "SELECT nilai1, nilai2, nilai3, nilai4, status FROM wawancara WHERE id_capaska = ? LIMIT 1";
     let wawancara: serde_json::Value = sqlx::query(w_sql)
         .bind(id_paskibraka)
         .fetch_optional(pool.get_ref())
@@ -547,7 +672,8 @@ pub async fn get_jurnal(
                     "nilai_penampilan": n4.map(|d| d.to_string()),
                     "status": status
                 })
-            }).unwrap_or(serde_json::Value::Null)
+            })
+            .unwrap_or(serde_json::Value::Null)
         })
         .unwrap_or(serde_json::Value::Null);
 
@@ -564,7 +690,8 @@ pub async fn get_jurnal(
                 let iq: Option<i32> = row.try_get("iq").ok();
                 let iq_kat: Option<String> = row.try_get("iq_kategori").ok();
                 json!({ "iq": iq, "kategori": iq_kat })
-            }).unwrap_or(serde_json::Value::Null)
+            })
+            .unwrap_or(serde_json::Value::Null)
         })
         .unwrap_or(serde_json::Value::Null);
 
@@ -581,19 +708,20 @@ pub async fn get_jurnal(
                 let sg: Option<i32> = row.try_get("score_gigi").ok();
                 let st: Option<i32> = row.try_get("score_tht").ok();
                 json!({ "score_mata": sm, "score_gigi": sg, "score_tht": st })
-            }).unwrap_or(serde_json::Value::Null)
+            })
+            .unwrap_or(serde_json::Value::Null)
         })
         .unwrap_or(serde_json::Value::Null);
 
     // d. PBB (Average of judges)
     let pbb_sql = r#"
-        SELECT 
-            AVG(nilai_sikap_sempurna) as ss, 
-            AVG(nilai_hormat) as h, 
-            AVG(nilai_jalan_ditempat) as jd, 
-            AVG(nilai_sikap_istirahat) as i, 
+        SELECT
+            AVG(nilai_sikap_sempurna) as ss,
+            AVG(nilai_hormat) as h,
+            AVG(nilai_jalan_ditempat) as jd,
+            AVG(nilai_sikap_istirahat) as i,
             AVG(nilai_langkah_tegap) as lt
-        FROM pbb2026 
+        FROM pbb2026
         WHERE id_capaska = ?
     "#;
     let pbb: serde_json::Value = sqlx::query(pbb_sql)
@@ -620,7 +748,7 @@ pub async fn get_jurnal(
     // 3. Fetch Daily logs
     // a. Pamong logs
     let pamong_logs_sql = r#"
-        SELECT 
+        SELECT
             tanggal, nilai_ketaqwaan, nilai_niat_kemauan, nilai_keberanian, nilai_komunikasi,
             nilai_keterbukaan, nilai_ketelitian, nilai_kesadaran, nilai_toleransi,
             nilai_keikhlasan, nilai_mempercayai, nilai_jiwa_korsa, nilai_kekeluargaan,
@@ -630,9 +758,9 @@ pub async fn get_jurnal(
             nilai_menghargai_waktu, nilai_berbicara, nilai_berjalan, nilai_makan_minum,
             nilai_kehadiran, nilai_hubungan_interpersonal, nilai_ketaatan, nilai_istirahat_malam,
             nilai_keindahan, nilai_kerapihan, nilai_kebersihan, nilai_berpakaian,
-            nilai_penampilan_rambut, nilai_bersih_rapih_wangi, catatan 
-        FROM jurnal_pemusatan_pamong 
-        WHERE id_paskibraka = ? 
+            nilai_penampilan_rambut, nilai_bersih_rapih_wangi, catatan
+        FROM jurnal_pemusatan_pamong
+        WHERE id_paskibraka = ?
         ORDER BY tanggal ASC
     "#;
     let pamong_logs: Vec<serde_json::Value> = sqlx::query(pamong_logs_sql)
@@ -644,7 +772,7 @@ pub async fn get_jurnal(
                 use sqlx::Row;
                 let t: chrono::NaiveDate = row.get("tanggal");
                 let catatan: Option<String> = row.get("catatan");
-                
+
                 json!({
                     "tanggal": t.to_string(),
                     "nilai_ketaqwaan": row.get::<i32, _>("nilai_ketaqwaan"),
@@ -693,7 +821,7 @@ pub async fn get_jurnal(
 
     // b. Pelatih logs
     let pelatih_logs_sql = r#"
-        SELECT 
+        SELECT
             tanggal, nilai_aba_aba, nilai_berhimpun, nilai_berkumpul, nilai_keluar_masuk_barisan,
             nilai_hormat, nilai_sikap_sempurna, nilai_istirahat, nilai_periksa_kerapihan,
             nilai_berhitung, nilai_lepas_kenakan_topi, nilai_bubar, nilai_lencang_depan,
@@ -701,9 +829,9 @@ pub async fn get_jurnal(
             nilai_balik_kanan, nilai_langkah_bisa, nilai_langkah_tegap, nilai_sikap_awal_berlari,
             nilai_jalan_di_tempat, nilai_4_langkah_ke_depan, nilai_4_langkah_ke_kanan, nilai_4_langkah_ke_kiri,
             nilai_4_langkah_ke_belakang, nilai_lipat_bendera, nilai_bentang_bendera, nilai_10_tahap_penurunan,
-            nilai_jadi_kibra_pembentang, nilai_jadi_kibra_pembawa, nilai_jadi_kibra_pengerek, catatan 
-        FROM jurnal_pemusatan_pelatih 
-        WHERE id_paskibraka = ? 
+            nilai_jadi_kibra_pembentang, nilai_jadi_kibra_pembawa, nilai_jadi_kibra_pengerek, catatan
+        FROM jurnal_pemusatan_pelatih
+        WHERE id_paskibraka = ?
         ORDER BY tanggal ASC
     "#;
     let pelatih_logs: Vec<serde_json::Value> = sqlx::query(pelatih_logs_sql)
@@ -761,25 +889,27 @@ pub async fn get_jurnal(
         .fetch_all(pool.get_ref())
         .await
         .map(|rows| {
-            rows.into_iter().map(|row| {
-                use sqlx::Row;
-                let t: chrono::NaiveDate = row.get("tanggal");
-                let tensi: String = row.get("tensi");
-                let suhu: rust_decimal::Decimal = row.get("suhu");
-                let keluhan: Option<String> = row.get("keluhan");
-                let diagnosa: Option<String> = row.get("diagnosa");
-                let obat: Option<String> = row.get("terapi_obat");
-                let rek: String = row.get("rekomendasi_istirahat");
-                json!({
-                    "tanggal": t.to_string(),
-                    "tensi": tensi,
-                    "suhu": suhu.to_string(),
-                    "keluhan": keluhan,
-                    "diagnosa": diagnosa,
-                    "terapi_obat": obat,
-                    "rekomendasi_istirahat": rek
+            rows.into_iter()
+                .map(|row| {
+                    use sqlx::Row;
+                    let t: chrono::NaiveDate = row.get("tanggal");
+                    let tensi: String = row.get("tensi");
+                    let suhu: rust_decimal::Decimal = row.get("suhu");
+                    let keluhan: Option<String> = row.get("keluhan");
+                    let diagnosa: Option<String> = row.get("diagnosa");
+                    let obat: Option<String> = row.get("terapi_obat");
+                    let rek: String = row.get("rekomendasi_istirahat");
+                    json!({
+                        "tanggal": t.to_string(),
+                        "tensi": tensi,
+                        "suhu": suhu.to_string(),
+                        "keluhan": keluhan,
+                        "diagnosa": diagnosa,
+                        "terapi_obat": obat,
+                        "rekomendasi_istirahat": rek
+                    })
                 })
-            }).collect()
+                .collect()
         })
         .unwrap_or_else(|_| Vec::new());
 
