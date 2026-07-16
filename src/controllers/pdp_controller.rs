@@ -1013,7 +1013,7 @@ async fn fetch_all_pdp_verified(
          LEFT JOIN kabupaten kd ON p.id_kabupaten_domisili = kd.id
          LEFT JOIN provinsi pp ON p.id_provinsi = pp.id
          LEFT JOIN kabupaten kp ON p.id_kabupaten = kp.id
-         WHERE p.status = 'Verified' ",
+         WHERE (p.status = 'Verified' or p.status = 'Simental' )  ",
     );
 
     // Tambahkan kondisi WHERE untuk filter wilayah - CARA SAMA
@@ -2424,6 +2424,7 @@ pub async fn update_pdp(
     }
 
     let upd: PdpUpdatePayload = if let Some(j) = payload_json {
+        log::info!("Received PDP update payload: {}", j);
         serde_json::from_str(&j).map_err(|e| {
             actix_web::error::ErrorBadRequest(format!("payload JSON invalid: {}", e))
         })?
@@ -3120,7 +3121,7 @@ async fn fetch_all_pdp_verified_all(
          LEFT JOIN kabupaten kd ON p.id_kabupaten_domisili = kd.id
          LEFT JOIN provinsi pp ON p.id_provinsi = pp.id
          LEFT JOIN kabupaten kp ON p.id_kabupaten = kp.id
-         WHERE p.status = 'Verified' ",
+         WHERE (p.status = 'Verified' or p.status = 'Simental' )  ",
     );
 
     if provinsi_id.is_some() || kabupaten_id.is_some() {

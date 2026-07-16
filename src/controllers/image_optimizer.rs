@@ -11,7 +11,7 @@ pub struct ImageQuery {
     q: Option<u8>, // kualitas 1–100
 }
 
-#[get("/image")]
+#[get("/api/image")]
 pub async fn optimize_image(query: web::Query<ImageQuery>) -> impl Responder {
     let src_path = PathBuf::from(&query.src);
     if !src_path.exists() {

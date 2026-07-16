@@ -639,12 +639,12 @@ pub async fn update_pasnas(
 
     let id = path.into_inner();
 
-    let mut nama_lengkap: Option<String> = None; // presence = Some
-    let mut jk: Option<String> = None; // presence = Some
-    let mut id_provinsi: Option<i32> = None; // presence = Some
-    let mut id_kabupaten: Option<i32> = None; // presence = Some
-    let mut asal_sma: Option<String> = None; // presence = Some
-    let mut tahun_tugas: Option<i32> = None; // presence = Some
+    let mut nama_lengkap: Option<String> = None;
+    let mut jk: Option<String> = None;
+    let mut id_provinsi: Option<i32> = None;
+    let mut id_kabupaten: Option<i32> = None;
+    let mut asal_sma: Option<String> = None;
+    let mut tahun_tugas: Option<i32> = None;
     let mut photo_new_path: Option<String> = None;
     let mut photo_remove = false;
 
@@ -660,24 +660,40 @@ pub async fn update_pasnas(
 
         match name {
             "nama_lengkap" => {
-                nama_lengkap = Some(read_text_field(field).await?);
+                let v = read_text_field(field).await?;
+                nama_lengkap = Some(sanitize_input(&v));
             }
             "jk" => {
                 let v = read_text_field(field).await?;
-                jk = Some(v);
+                jk = Some(sanitize_input(&v));
             }
             "id_provinsi" => {
-                id_provinsi = None;
+                let v = read_text_field(field).await?;
+                if !v.is_empty() {
+                    if let Ok(val) = v.parse::<i32>() {
+                        id_provinsi = Some(val);
+                    }
+                }
             }
             "id_kabupaten" => {
-                id_kabupaten = None;
+                let v = read_text_field(field).await?;
+                if !v.is_empty() {
+                    if let Ok(val) = v.parse::<i32>() {
+                        id_kabupaten = Some(val);
+                    }
+                }
             }
             "asal_sma" => {
                 let v = read_text_field(field).await?;
-                asal_sma = Some(v);
+                asal_sma = Some(sanitize_input(&v));
             }
             "tahun_tugas" => {
-                tahun_tugas = None;
+                let v = read_text_field(field).await?;
+                if !v.is_empty() {
+                    if let Ok(val) = v.parse::<i32>() {
+                        tahun_tugas = Some(val);
+                    }
+                }
             }
             "photo" => {
                 photo_new_path =
@@ -690,6 +706,7 @@ pub async fn update_pasnas(
             _ => {}
         }
     }
+
     // Ambil path foto lama sebelum proses update
     let (old_photo_opt,): (Option<String>,) =
         sqlx::query_as("SELECT photo FROM paskibraka_nasional WHERE id = ?")
@@ -801,7 +818,7 @@ pub async fn update_pasnas(
 
     // Ambil data terbaru
     let updated = sqlx::query_as::<_, UpdatePaskibrakaRequest>(
-        "SELECT id, nama_lengkap, jk, id_provinsi, id_kabupaten, asal_sma, tahun_tugas,  photo FROM paskibraka_nasional WHERE id = ?",
+        "SELECT id, nama_lengkap, jk, id_provinsi, id_kabupaten, asal_sma, tahun_tugas, photo FROM paskibraka_nasional WHERE id = ?",
     )
     .bind(id)
     .fetch_one(pool.get_ref())

@@ -9,7 +9,7 @@ use dotenv::dotenv;
 use env_logger;
 use log::{error, info};
 
-// use crate::controllers::image_optimizer::optimize_image;
+use crate::controllers::image_optimizer::optimize_image;
 
 mod auth;
 mod controllers;
@@ -127,7 +127,7 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::auth_controller::forgot_password)
             .service(controllers::auth_controller::reset_password)
             .service(controllers::auth_controller::logout)
-            // .service(optimize_image)
+            .service(optimize_image)
             .service(controllers::dashboard_controller::get_contact)
             .service(controllers::dashboard_controller::delete_contact)
             .service(controllers::dashboard_controller::get_pdp_terdaftar)
@@ -228,6 +228,26 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::user_controller::update_user_by_id)
             .service(controllers::user_controller::delete_user)
             .service(controllers::user_controller::new_add_user)
+            //audit logs
+            .service(controllers::audit_log_controller::get_audit_logs)
+            //pemusatan
+            .service(controllers::pemusatan_controller::get_candidates)
+            .service(controllers::pemusatan_controller::submit_pamong)
+            .service(controllers::pemusatan_controller::submit_pelatih)
+            .service(controllers::pemusatan_controller::submit_dokter)
+            .service(controllers::pemusatan_controller::get_jurnal)
+            //seleksi
+            .service(controllers::seleksi_controller::get_candidates)
+            .service(controllers::seleksi_controller::get_pbb)
+            .service(controllers::seleksi_controller::submit_pbb)
+            .service(controllers::seleksi_controller::get_wawancara)
+            .service(controllers::seleksi_controller::submit_wawancara)
+            .service(controllers::seleksi_controller::get_kesehatan)
+            .service(controllers::seleksi_controller::submit_kesehatan)
+            .service(controllers::seleksi_controller::get_psikotes)
+            .service(controllers::seleksi_controller::submit_psikotes)
+            .service(controllers::seleksi_controller::get_minat_bakat)
+            .service(controllers::seleksi_controller::submit_minat_bakat)
             //gallery
             .service(controllers::gallery_controller::create_gallery)
             .service(controllers::gallery_controller::update_gallery_meta_spoof)
@@ -311,6 +331,12 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::paskibraka_controller::create_pasnas)
             .service(controllers::paskibraka_controller::update_pasnas)
             .service(controllers::paskibraka_controller::delete_pasnas)
+            // sipena
+            .service(controllers::sipena_controller::get_modules)
+            .service(controllers::sipena_controller::upload_pdf_module)
+            .service(controllers::sipena_controller::add_youtube_module)
+            .service(controllers::sipena_controller::delete_module)
+            .service(controllers::sipena_controller::chat)
             //pdp
             .service(controllers::pdp_controller::scope())
     })

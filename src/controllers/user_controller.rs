@@ -1478,11 +1478,21 @@ pub async fn update_user_by_id(
     if ![
         "Superadmin",
         "Administrator",
-        "Anggota",
-        "Pelaksana",
+        "Admin Penilaian",
+        "Admin Pendaftaran",
+        "Admin Pemusatan",
         "Admin Kesbangpol",
         "Jurnalis",
+        "Pelaksana",
+        "Anggota",
         "Majelis Pertimbangan DPPI",
+        "Pamong",
+        "Pelatih",
+        "Dokter",
+        "Juri PBB",
+        "Juri Minat Bakat",
+        "Pewawancara",
+        "Dokter Penilai",
     ]
     .contains(&new_role.as_str())
     {

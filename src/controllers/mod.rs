@@ -24,3 +24,9 @@ pub mod video_controller;
 pub mod visitor_advanced_controller;
 pub mod visitor_controller;
 pub mod paskibraka_controller;
+pub mod audit_log_controller;
+pub mod pemusatan_controller;
+pub mod image_optimizer;
+pub mod seleksi_controller;
+pub mod sipena_controller;
+

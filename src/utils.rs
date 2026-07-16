@@ -867,3 +867,53 @@ impl SubmitConfirmationData {
         self
     }
 }
+
+pub async fn log_activity(
+    pool: &sqlx::MySqlPool,
+    user_id: Option<&str>,
+    username: Option<&str>,
+    role: Option<&str>,
+    action: &str,
+    module: &str,
+    status: &str,
+    details: Option<&str>,
+    req: Option<&actix_web::HttpRequest>,
+) {
+    let id = uuid::Uuid::new_v4().to_string();
+
+    let mut ip_address = None;
+    let mut user_agent = None;
+
+    if let Some(r) = req {
+        // Get real remote IP address
+        ip_address = r.connection_info().realip_remote_addr().map(|s| s.to_string());
+        
+        // Get user agent
+        user_agent = r.headers()
+            .get("user-agent")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+    }
+
+    let query = r#"
+        INSERT INTO activity_logs (id, user_id, username, role, action, module, ip_address, user_agent, status, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+
+    if let Err(e) = sqlx::query(query)
+        .bind(&id)
+        .bind(user_id)
+        .bind(username)
+        .bind(role)
+        .bind(action)
+        .bind(module)
+        .bind(ip_address)
+        .bind(user_agent)
+        .bind(status)
+        .bind(details)
+        .execute(pool)
+        .await
+    {
+        log::error!("Gagal menyimpan audit log ke database: {:?}", e);
+    }
+}

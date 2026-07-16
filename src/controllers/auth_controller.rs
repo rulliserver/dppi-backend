@@ -635,6 +635,7 @@ struct RecaptchaResponse {
 pub async fn login(
     pool: web::Data<MySqlPool>,
     payload: web::Json<LoginPayload>,
+    req: actix_web::HttpRequest,
 ) -> Result<impl Responder, Error> {
     let email = payload.email.trim();
     let password = payload.password.trim();
@@ -674,7 +675,7 @@ pub async fn login(
     }
 
     // ---- Ambil user ----
-    let user = sqlx::query_as::<_, User>(
+    let user_opt = sqlx::query_as::<_, User>(
         r#"SELECT id, avatar, name, password, email, role, address, phone, id_pdp, id_provinsi, id_kabupaten, email_verified_at, remember_token, created_at FROM users WHERE email = ? LIMIT 1"#,
     )
     .bind(email)
@@ -683,8 +684,25 @@ pub async fn login(
     .map_err(|e| {
         log::error!("DB error get user: {:?}", e);
         actix_web::error::ErrorInternalServerError("DB error")
-    })?
-    .ok_or_else(|| actix_web::error::ErrorUnauthorized("Email tidak terdaftar"))?;
+    })?;
+
+    let user = match user_opt {
+        Some(u) => u,
+        None => {
+            crate::utils::log_activity(
+                pool.get_ref(),
+                None,
+                Some(email),
+                None,
+                "LOGIN",
+                "AUTH",
+                "FAILED",
+                Some("Email tidak terdaftar"),
+                Some(&req),
+            ).await;
+            return Err(actix_web::error::ErrorUnauthorized("Email tidak terdaftar"));
+        }
+    };
 
     // ---- Verifikasi password ----
     let ok = verify(password, &user.password).map_err(|e| {
@@ -693,6 +711,17 @@ pub async fn login(
     })?;
 
     if !ok {
+        crate::utils::log_activity(
+            pool.get_ref(),
+            Some(&user.id),
+            Some(&user.name),
+            Some(&user.role),
+            "LOGIN",
+            "AUTH",
+            "FAILED",
+            Some("Password salah"),
+            Some(&req),
+        ).await;
         return Err(actix_web::error::ErrorUnauthorized(
             "Kredensial tidak valid",
         ));
@@ -706,6 +735,17 @@ pub async fn login(
     .map_err(actix_web::error::ErrorUnauthorized)?;
 
     if !bcrypt::verify(&payload.password, &row.1).map_err(actix_web::error::ErrorUnauthorized)? {
+        crate::utils::log_activity(
+            pool.get_ref(),
+            Some(&user.id),
+            Some(&user.name),
+            Some(&user.role),
+            "LOGIN",
+            "AUTH",
+            "FAILED",
+            Some("Password salah"),
+            Some(&req),
+        ).await;
         return Err(actix_web::error::ErrorUnauthorized("Password salah"));
     }
 
@@ -721,6 +761,18 @@ pub async fn login(
         .same_site(SameSite::Lax)
         .max_age(Duration::days(4))
         .finish();
+
+    crate::utils::log_activity(
+        pool.get_ref(),
+        Some(&user.id),
+        Some(&user.name),
+        Some(&user.role),
+        "LOGIN",
+        "AUTH",
+        "SUCCESS",
+        Some("Login berhasil"),
+        Some(&req),
+    ).await;
 
     Ok(HttpResponse::Ok().cookie(access_cookie).json(json!({
         "message": "Berhasil login",
@@ -1073,7 +1125,21 @@ async fn send_reset_password_email(to: &str, name: &str, reset_url: &str) -> Res
 }
 
 #[post("/api/logout")]
-pub async fn logout() -> Result<impl Responder, Error> {
+pub async fn logout(
+    pool: web::Data<MySqlPool>,
+    req: actix_web::HttpRequest,
+) -> Result<impl Responder, Error> {
+    // Try to get user claims from JWT to log who logged out
+    let mut user_id = None;
+    let mut username = None;
+    let mut role = None;
+
+    if let Ok(claims) = auth::verify_jwt(&req) {
+        user_id = Some(claims.user_id);
+        username = Some(claims.nama_user);
+        role = Some(claims.role);
+    }
+
     let access_cookie = Cookie::build("access_token", "")
         .path("/")
         .http_only(true)
@@ -1082,6 +1148,20 @@ pub async fn logout() -> Result<impl Responder, Error> {
         // .domain("127.0.0.1")
         .max_age(Duration::seconds(0))
         .finish();
+
+    if user_id.is_some() {
+        crate::utils::log_activity(
+            pool.get_ref(),
+            user_id.as_deref(),
+            username.as_deref(),
+            role.as_deref(),
+            "LOGOUT",
+            "AUTH",
+            "SUCCESS",
+            Some("Logout berhasil"),
+            Some(&req),
+        ).await;
+    }
 
     Ok(HttpResponse::Ok()
         .cookie(access_cookie)
