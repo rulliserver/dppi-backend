@@ -1,5 +1,6 @@
 use crate::auth;
 use actix_web::{Error, HttpRequest, HttpResponse, Responder, get, post, web};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{FromRow, MySqlPool};
@@ -54,8 +55,8 @@ pub struct PamongInput {
 pub struct PamongJournal {
     pub id: String,
     pub id_paskibraka: i32,
-    pub id_petugas: String,
-    pub tanggal: String,
+    pub id_pamong: String,
+    pub tanggal: NaiveDate,
     pub nilai_ketaqwaan: Option<i32>,
     pub nilai_niat_kemauan: Option<i32>,
     pub nilai_keberanian: Option<i32>,
@@ -156,11 +157,8 @@ pub struct FilterParams {
 pub struct CandidateSummary {
     pub id: i32,
     pub nama_lengkap: String,
-    pub photo: Option<String>,
     pub jk: String,
-    pub nama_instansi_pendidikan: Option<String>,
-    pub nomor_dada: Option<String>,
-    pub status: Option<String>,
+    pub id_pamong: Option<String>,
 }
 
 // 1. Fetch roster of candidates
@@ -184,19 +182,27 @@ pub async fn get_candidates(
         return Err(actix_web::error::ErrorForbidden("Akses ditolak"));
     }
 
-    let mut sql = "SELECT id, nama_lengkap, photo, jk, nama_instansi_pendidikan, nomor_dada, status FROM data_paskibraka WHERE 1=1".to_string();
+    let mut sql =
+        String::from("SELECT id, nama_lengkap, jk, id_pamong FROM data_capaska WHERE 1=1");
+    let mut params: Vec<String> = Vec::new();
+
+    // Jika role adalah Pamong, filter berdasarkan id_pamong
+    if claims.role.as_str() == "Pamong" {
+        sql.push_str(" AND id_pamong = ?");
+        params.push(claims.user_id.clone());
+    }
+
     if let Some(ref search) = query.search {
         if !search.is_empty() {
             sql.push_str(" AND nama_lengkap LIKE ?");
+            params.push(format!("%{}%", search));
         }
     }
     sql.push_str(" ORDER BY nama_lengkap ASC");
 
     let mut q = sqlx::query_as::<_, CandidateSummary>(&sql);
-    if let Some(ref search) = query.search {
-        if !search.is_empty() {
-            q = q.bind(format!("%{}%", search));
-        }
+    for param in params {
+        q = q.bind(param);
     }
 
     let candidates = q
@@ -225,7 +231,7 @@ pub async fn submit_pamong(
     let id = Uuid::new_v4().to_string();
     let query = r#"
         INSERT INTO jurnal_pemusatan_pamong (
-            id, id_paskibraka, id_petugas, tanggal,
+            id, id_paskibraka, id_pamong, tanggal,
             nilai_ketaqwaan, nilai_niat_kemauan, nilai_keberanian, nilai_komunikasi,
             nilai_keterbukaan, nilai_ketelitian, nilai_kesadaran, nilai_toleransi,
             nilai_keikhlasan, nilai_mempercayai, nilai_jiwa_korsa, nilai_kekeluargaan,
@@ -251,7 +257,7 @@ pub async fn submit_pamong(
             ?, ?, ?
         )
         ON DUPLICATE KEY UPDATE
-            id_petugas = VALUES(id_petugas),
+            id_pamong = VALUES(id_pamong),
             nilai_ketaqwaan = VALUES(nilai_ketaqwaan),
             nilai_niat_kemauan = VALUES(nilai_niat_kemauan),
             nilai_keberanian = VALUES(nilai_keberanian),
@@ -362,6 +368,131 @@ pub async fn submit_pamong(
         .json(json!({ "status": "success", "message": "Jurnal Pamong berhasil disimpan" })))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AssignPamongInput {
+    pub id_capaska: i32,
+    pub id_pamong: String,
+}
+
+#[post("/api/pemusatan/assign-pamong")]
+pub async fn assign_pamong(
+    req: HttpRequest,
+    pool: web::Data<MySqlPool>,
+    payload: web::Json<AssignPamongInput>,
+) -> Result<impl Responder, Error> {
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+
+    // Hanya Admin/Superadmin yang bisa assign
+    let allowed_roles = ["Admin Pemusatan", "Superadmin"];
+    if !allowed_roles.contains(&claims.role.as_str()) {
+        return Err(actix_web::error::ErrorForbidden(
+            "Akses ditolak. Hanya Admin Pemusatan atau Superadmin.",
+        ));
+    }
+
+    // Validasi: cek apakah pamong dengan id tersebut ada dan role-nya Pamong
+    let check_pamong = sqlx::query!(
+        "SELECT role FROM users WHERE id = ? AND role = 'Pamong'",
+        payload.id_pamong
+    )
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    if check_pamong.is_none() {
+        return Ok(HttpResponse::BadRequest().json(json!({
+            "status": "error",
+            "message": "User dengan role Pamong tidak ditemukan"
+        })));
+    }
+
+    // Update data_capaska
+    let result = sqlx::query!(
+        "UPDATE data_capaska SET id_pamong = ? WHERE id = ?",
+        payload.id_pamong,
+        payload.id_capaska
+    )
+    .execute(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    if result.rows_affected() == 0 {
+        return Ok(HttpResponse::NotFound().json(json!({
+            "status": "error",
+            "message": "Capaska tidak ditemukan"
+        })));
+    }
+
+    // Log activity
+    crate::utils::log_activity(
+        pool.get_ref(),
+        Some(&claims.user_id),
+        Some(&claims.nama_user),
+        Some(&claims.role),
+        "ASSIGN_PAMONG",
+        "PEMUSATAN",
+        "SUCCESS",
+        Some(&format!(
+            "Assigned Pamong {} to Capaska {}",
+            payload.id_pamong, payload.id_capaska
+        )),
+        Some(&req),
+    )
+    .await;
+
+    Ok(HttpResponse::Ok().json(json!({
+        "status": "success",
+        "message": "Pamong berhasil diassign ke Capaska"
+    })))
+}
+
+#[get("/api/pemusatan/list-pamong")]
+pub async fn get_pamong_list(
+    req: HttpRequest,
+    pool: web::Data<MySqlPool>,
+) -> Result<impl Responder, Error> {
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+
+    let allowed_roles = ["Admin Pemusatan", "Superadmin"];
+    if !allowed_roles.contains(&claims.role.as_str()) {
+        return Err(actix_web::error::ErrorForbidden(
+            "Akses ditolak. Hanya Admin Pemusatan atau Superadmin.",
+        ));
+    }
+
+    let pamong_list = sqlx::query!(
+        r#"
+        SELECT
+            u.id,
+            u.name,
+            COUNT(dc.id) as count_assigned
+        FROM users u
+        LEFT JOIN data_capaska dc ON u.id = dc.id_pamong
+        WHERE u.role = 'Pamong'
+        GROUP BY u.id, u.name
+        ORDER BY u.name ASC
+        "#
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    let response: Vec<serde_json::Value> = pamong_list
+        .into_iter()
+        .map(|row| {
+            json!({
+                "id": row.id,
+                "nama_user": row.name,
+                "count_assigned": row.count_assigned
+            })
+        })
+        .collect();
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
 #[get("/api/pemusatan/pamong/{id}/{tanggal}")]
 pub async fn get_pamong_journal(
     req: HttpRequest,
@@ -386,7 +517,7 @@ pub async fn get_pamong_journal(
 
     let query = r#"
         SELECT
-            id, id_paskibraka, id_petugas, tanggal,
+            id, id_paskibraka, id_pamong, tanggal,
             nilai_ketaqwaan, nilai_niat_kemauan, nilai_keberanian, nilai_komunikasi,
             nilai_keterbukaan, nilai_ketelitian, nilai_kesadaran, nilai_toleransi,
             nilai_keikhlasan, nilai_mempercayai, nilai_jiwa_korsa, nilai_kekeluargaan,
@@ -432,7 +563,7 @@ pub async fn submit_pelatih(
     let id = Uuid::new_v4().to_string();
     let query = r#"
         INSERT INTO jurnal_pemusatan_pelatih (
-            id, id_paskibraka, id_petugas, tanggal,
+            id, id_paskibraka, id_pamong, tanggal,
             nilai_aba_aba, nilai_berhimpun, nilai_berkumpul, nilai_keluar_masuk_barisan,
             nilai_hormat, nilai_sikap_sempurna, nilai_istirahat, nilai_periksa_kerapihan,
             nilai_berhitung, nilai_lepas_kenakan_topi, nilai_bubar, nilai_lencang_depan,
@@ -453,7 +584,7 @@ pub async fn submit_pelatih(
             ?, ?, ?, ?
         )
         ON DUPLICATE KEY UPDATE
-            id_petugas = VALUES(id_petugas),
+            id_pamong = VALUES(id_pamong),
             nilai_aba_aba = VALUES(nilai_aba_aba),
             nilai_berhimpun = VALUES(nilai_berhimpun),
             nilai_berkumpul = VALUES(nilai_berkumpul),
@@ -567,10 +698,10 @@ pub async fn submit_dokter(
 
     let id = Uuid::new_v4().to_string();
     let query = r#"
-        INSERT INTO jurnal_pemusatan_dokter (id, id_paskibraka, id_petugas, tanggal, tensi, suhu, keluhan, diagnosa, terapi_obat, rekomendasi_istirahat)
+        INSERT INTO jurnal_pemusatan_dokter (id, id_paskibraka, id_pamong, tanggal, tensi, suhu, keluhan, diagnosa, terapi_obat, rekomendasi_istirahat)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
-            id_petugas = VALUES(id_petugas),
+            id_pamong = VALUES(id_pamong),
             tensi = VALUES(tensi),
             suhu = VALUES(suhu),
             keluhan = VALUES(keluhan),
@@ -927,4 +1058,292 @@ pub async fn get_jurnal(
             "dokter": dokter_logs
         }
     })))
+}
+
+// Update struct definition
+#[derive(Debug, Serialize)]
+pub struct PamongDashboardStats {
+    pub tanggal: String,
+    pub jumlah_sikap: rust_decimal::Decimal, // Ubah ke Decimal
+    pub jumlah_penampilan: rust_decimal::Decimal, // Ubah ke Decimal
+    pub total_penilaian: i64,
+    pub rata_rata_sikap: f64,
+    pub rata_rata_penampilan: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PamongCandidateStats {
+    pub id: i32,
+    pub nama_lengkap: String,
+    pub jk: String,
+    pub total_sikap: i64,
+    pub total_penampilan: i64,
+    pub total_penilaian: i64,
+    pub rata_rata_sikap: f64,
+    pub rata_rata_penampilan: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PamongDashboardResponse {
+    pub daily_stats: Vec<PamongDashboardStats>,
+    pub candidate_stats: Vec<PamongCandidateStats>,
+    pub total_candidates: i64,
+    pub total_entries: i64,
+}
+
+#[get("/api/pemusatan/pamong/dashboard")]
+pub async fn get_pamong_dashboard(
+    req: HttpRequest,
+    pool: web::Data<MySqlPool>,
+) -> Result<impl Responder, Error> {
+    let claims =
+        auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
+
+    if claims.role.as_str() != "Pamong" {
+        return Err(actix_web::error::ErrorForbidden(
+            "Akses ditolak. Hanya untuk Pamong.",
+        ));
+    }
+
+    let id_pamong = &claims.user_id;
+
+    // Get list of Capaska IDs assigned to this Pamong
+    let assigned_capaska =
+        sqlx::query!("SELECT id FROM data_capaska WHERE id_pamong = ?", id_pamong)
+            .fetch_all(pool.get_ref())
+            .await
+            .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    let capaska_ids: Vec<i32> = assigned_capaska.iter().map(|row| row.id).collect();
+
+    if capaska_ids.is_empty() {
+        // Return empty dashboard if no assigned capaska
+        let response = PamongDashboardResponse {
+            daily_stats: Vec::new(),
+            candidate_stats: Vec::new(),
+            total_candidates: 0,
+            total_entries: 0,
+        };
+        return Ok(HttpResponse::Ok().json(response));
+    }
+
+    // Build IN clause for capaska IDs
+    let placeholders: Vec<String> = capaska_ids.iter().map(|_| "?".to_string()).collect();
+    let in_clause = placeholders.join(",");
+
+    // Daily stats dengan filter capaska yang diassign
+    let daily_sql = format!(
+        r#"
+        SELECT
+            tanggal,
+            COUNT(*) as total_entries,
+            CAST(SUM(
+                CASE WHEN nilai_ketaqwaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_niat_kemauan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_keberanian IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_komunikasi IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_keterbukaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_ketelitian IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kesadaran IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_toleransi IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_keikhlasan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_mempercayai IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_jiwa_korsa IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kekeluargaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_persatuan_kesatuan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_ketahanan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kekompakan_keseragaman IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_ketertiban IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kesopanan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kesigapan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kewajaran IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_ketanggapan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_ketenangan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_menyimak IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kebiasaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_mengelola_stres IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_menghargai_waktu IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_berbicara IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_berjalan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_makan_minum IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kehadiran IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_hubungan_interpersonal IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_ketaatan IS NOT NULL THEN 1 ELSE 0 END
+            ) AS SIGNED) as jumlah_sikap,
+            CAST(SUM(
+                CASE WHEN nilai_istirahat_malam IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_keindahan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kerapihan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_kebersihan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_berpakaian IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_penampilan_rambut IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN nilai_bersih_rapih_wangi IS NOT NULL THEN 1 ELSE 0 END
+            ) AS SIGNED) as jumlah_penampilan
+        FROM jurnal_pemusatan_pamong
+        WHERE id_pamong = ? AND id_paskibraka IN ({})
+        GROUP BY tanggal
+        ORDER BY tanggal DESC
+        LIMIT 30
+        "#,
+        in_clause
+    );
+
+    // Execute daily query with dynamic params
+    let mut daily_query = sqlx::query(&daily_sql);
+    daily_query = daily_query.bind(id_pamong);
+    for id in &capaska_ids {
+        daily_query = daily_query.bind(id);
+    }
+
+    let daily_rows = daily_query
+        .fetch_all(pool.get_ref())
+        .await
+        .map_err(actix_web::error::ErrorInternalServerError)?;
+
+    let daily_stats_response: Vec<PamongDashboardStats> = daily_rows
+        .into_iter()
+        .map(|row| {
+            use sqlx::Row;
+            let tanggal: chrono::NaiveDate = row.get("tanggal");
+            let total_entries: i64 = row.get("total_entries");
+            let jumlah_sikap: i64 = row.get("jumlah_sikap");
+            let jumlah_penampilan: i64 = row.get("jumlah_penampilan");
+
+            let rata_rata_sikap = if total_entries > 0 {
+                jumlah_sikap as f64 / total_entries as f64
+            } else {
+                0.0
+            };
+            let rata_rata_penampilan = if total_entries > 0 {
+                jumlah_penampilan as f64 / total_entries as f64
+            } else {
+                0.0
+            };
+
+            PamongDashboardStats {
+                tanggal: tanggal.to_string(),
+                jumlah_sikap: rust_decimal::Decimal::from(jumlah_sikap),
+                jumlah_penampilan: rust_decimal::Decimal::from(jumlah_penampilan),
+                total_penilaian: total_entries,
+                rata_rata_sikap,
+                rata_rata_penampilan,
+            }
+        })
+        .collect();
+
+    // Candidate stats dengan filter capaska yang diassign
+    let candidate_sql = format!(
+        r#"
+        SELECT
+            dc.id,
+            dc.nama_lengkap,
+            dc.jk,
+            COUNT(jp.id) as total_entries,
+            CAST(SUM(
+                CASE WHEN jp.nilai_ketaqwaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_niat_kemauan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_keberanian IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_komunikasi IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_keterbukaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_ketelitian IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kesadaran IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_toleransi IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_keikhlasan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_mempercayai IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_jiwa_korsa IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kekeluargaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_persatuan_kesatuan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_ketahanan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kekompakan_keseragaman IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_ketertiban IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kesopanan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kesigapan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kewajaran IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_ketanggapan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_ketenangan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_menyimak IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kebiasaan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_mengelola_stres IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_menghargai_waktu IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_berbicara IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_berjalan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_makan_minum IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kehadiran IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_hubungan_interpersonal IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_ketaatan IS NOT NULL THEN 1 ELSE 0 END
+            ) AS SIGNED) as total_sikap,
+            CAST(SUM(
+                CASE WHEN jp.nilai_istirahat_malam IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_keindahan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kerapihan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_kebersihan IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_berpakaian IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_penampilan_rambut IS NOT NULL THEN 1 ELSE 0 END +
+                CASE WHEN jp.nilai_bersih_rapih_wangi IS NOT NULL THEN 1 ELSE 0 END
+            ) AS SIGNED) as total_penampilan
+        FROM data_capaska dc
+        LEFT JOIN jurnal_pemusatan_pamong jp
+            ON dc.id = jp.id_paskibraka AND jp.id_pamong = ?
+        WHERE dc.id_pamong = ?
+        GROUP BY dc.id, dc.nama_lengkap, dc.jk
+        ORDER BY COUNT(jp.id) DESC, dc.nama_lengkap ASC
+        "#
+    );
+
+    let candidate_stats_response: Vec<PamongCandidateStats> = sqlx::query(&candidate_sql)
+        .bind(id_pamong)
+        .bind(id_pamong)
+        .fetch_all(pool.get_ref())
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| {
+                    use sqlx::Row;
+                    let id: i32 = row.get("id");
+                    let nama_lengkap: String = row.get("nama_lengkap");
+                    let jk: String = row.get("jk");
+                    let total_entries: i64 = row.get("total_entries");
+                    let total_sikap: i64 = row.get("total_sikap");
+                    let total_penampilan: i64 = row.get("total_penampilan");
+
+                    let rata_rata_sikap = if total_entries > 0 {
+                        total_sikap as f64 / total_entries as f64
+                    } else {
+                        0.0
+                    };
+                    let rata_rata_penampilan = if total_entries > 0 {
+                        total_penampilan as f64 / total_entries as f64
+                    } else {
+                        0.0
+                    };
+
+                    PamongCandidateStats {
+                        id,
+                        nama_lengkap,
+                        jk,
+                        total_sikap,
+                        total_penampilan,
+                        total_penilaian: total_entries,
+                        rata_rata_sikap,
+                        rata_rata_penampilan,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_else(|_| Vec::new());
+
+    let total_candidates = candidate_stats_response.len() as i64;
+    let total_entries: i64 = candidate_stats_response
+        .iter()
+        .map(|c| c.total_penilaian)
+        .sum();
+
+    let response = PamongDashboardResponse {
+        daily_stats: daily_stats_response,
+        candidate_stats: candidate_stats_response,
+        total_candidates,
+        total_entries,
+    };
+
+    Ok(HttpResponse::Ok().json(response))
 }
