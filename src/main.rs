@@ -240,6 +240,14 @@ async fn main() -> std::io::Result<()> {
             .service(controllers::pemusatan_controller::submit_dokter)
             .service(controllers::pemusatan_controller::get_jurnal)
             .service(controllers::pemusatan_controller::get_pamong_dashboard)
+            .service(controllers::pemusatan_controller::get_admin_dashboard)
+            .service(controllers::pemusatan_controller::get_existing_score)
+            .service(controllers::pemusatan_controller::get_grafik_perkembangan)
+            .service(controllers::pemusatan_controller::export_pertanggal)
+            .service(controllers::pemusatan_controller::export_ratarata)
+            .service(controllers::pemusatan_controller::update_capaska)
+            .service(controllers::pemusatan_controller::get_capaska)
+
             //seleksi
             .service(controllers::seleksi_controller::get_candidates)
             .service(controllers::seleksi_controller::get_pbb)
