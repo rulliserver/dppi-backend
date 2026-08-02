@@ -1282,7 +1282,7 @@ pub async fn get_pamong_dashboard(
         "#
     );
 
-    let candidate_stats_response: Vec<PamongCandidateStats> = sqlx::query(&candidate_sql)
+    let mut candidate_stats_response: Vec<PamongCandidateStats> = sqlx::query(&candidate_sql)
         .bind(id_pamong)
         .bind(id_pamong)
         .fetch_all(pool.get_ref())
@@ -1335,6 +1335,8 @@ pub async fn get_pamong_dashboard(
                 .collect()
         })
         .unwrap_or_else(|_| Vec::new());
+
+    candidate_stats_response.sort_by(|a, b| b.nilai_keseluruhan.partial_cmp(&a.nilai_keseluruhan).unwrap_or(std::cmp::Ordering::Equal));
 
     let total_candidates = candidate_stats_response.len() as i64;
     let total_entries: i64 = candidate_stats_response
@@ -1613,7 +1615,7 @@ pub async fn upload_capaska_photo(
                 actix_web::error::ErrorInternalServerError(format!("Write file error: {}", e))
             })?;
 
-            photo_filename = Some(filename);
+            photo_filename = Some(filename.to_string());
         }
     }
 
@@ -2029,7 +2031,7 @@ pub async fn get_admin_dashboard(
     .await
     .map_err(actix_web::error::ErrorInternalServerError)?;
 
-    let capaska_progress_response: Vec<CapaskaProgress> = capaska_progress
+    let mut capaska_progress_response: Vec<CapaskaProgress> = capaska_progress
         .into_iter()
         .map(|row| {
             let pamong_sikap_avg = decimal_to_f64(row.pamong_sikap_avg);
@@ -2068,6 +2070,8 @@ pub async fn get_admin_dashboard(
             }
         })
         .collect();
+
+    capaska_progress_response.sort_by(|a, b| b.nilai_keseluruhan.partial_cmp(&a.nilai_keseluruhan).unwrap_or(std::cmp::Ordering::Equal));
 
     // 5. Recent Activities - tanpa description
     let recent_activities = sqlx::query!(
@@ -2199,7 +2203,7 @@ pub async fn get_existing_score(
                 map.insert("id_paskibraka".to_string(), json!(id_paskibraka));
                 map.insert("tanggal".to_string(), json!(tanggal_str));
                 map.insert("catatan".to_string(), json!(r.get::<Option<String>, _>("catatan")));
-                
+
                 let cols = vec![
                     "nilai_ketaqwaan", "nilai_niat_kemauan", "nilai_keberanian", "nilai_komunikasi",
                     "nilai_keterbukaan", "nilai_ketelitian", "nilai_kesadaran", "nilai_toleransi",
@@ -2235,7 +2239,7 @@ pub async fn get_existing_score(
                 map.insert("id_paskibraka".to_string(), json!(id_paskibraka));
                 map.insert("tanggal".to_string(), json!(tanggal_str));
                 map.insert("catatan".to_string(), json!(r.get::<Option<String>, _>("catatan")));
-                
+
                 let cols = vec![
                     "nilai_aba_aba", "nilai_berhimpun", "nilai_berkumpul", "nilai_keluar_masuk_barisan",
                     "nilai_hormat", "nilai_sikap_sempurna", "nilai_istirahat", "nilai_periksa_kerapihan",
@@ -2269,10 +2273,10 @@ pub async fn get_existing_score(
                 map.insert("id_paskibraka".to_string(), json!(id_paskibraka));
                 map.insert("tanggal".to_string(), json!(tanggal_str));
                 map.insert("tensi".to_string(), json!(r.get::<Option<String>, _>("tensi")));
-                
+
                 let suhu: Option<Decimal> = r.get("suhu");
                 map.insert("suhu".to_string(), json!(suhu.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))));
-                
+
                 map.insert("keluhan".to_string(), json!(r.get::<Option<String>, _>("keluhan")));
                 map.insert("diagnosa".to_string(), json!(r.get::<Option<String>, _>("diagnosa")));
                 map.insert("terapi_obat".to_string(), json!(r.get::<Option<String>, _>("terapi_obat")));
