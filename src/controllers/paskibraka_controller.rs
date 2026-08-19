@@ -1606,7 +1606,7 @@ pub async fn get_paskibraka_tugas(
 pub async fn create_or_update_tugas(
     req: HttpRequest,
     pool: web::Data<MySqlPool>,
-    body: web::Json<PaskibrakaTugasRequest>,
+    mut payload: Multipart,
 ) -> Result<impl Responder, Error> {
     init_paskibraka_tables(pool.get_ref()).await;
     let claims =
@@ -1621,29 +1621,98 @@ pub async fn create_or_update_tugas(
         ));
     }
 
-    let parsed_deadline =
-        chrono::NaiveDateTime::parse_from_str(&body.deadline, "%Y-%m-%d %H:%M:%S")
-            .or_else(|_| {
-                chrono::NaiveDateTime::parse_from_str(
-                    &format!("{} 23:59:59", body.deadline),
-                    "%Y-%m-%d %H:%M:%S",
-                )
-            })
-            .map_err(|_| {
-                actix_web::error::ErrorBadRequest(
-                    "Format deadline tidak valid (Gunakan format YYYY-MM-DD HH:MM:SS)",
-                )
-            })?;
+    let upload_dir = "uploads/assets/docs/tugas";
+    if let Err(e) = fs::create_dir_all(upload_dir) {
+        log::error!("Gagal membuat folder tugas: {:?}", e);
+    }
 
-    if let Some(ref task_id) = body.id {
+    let mut task_id = None;
+    let mut judul = String::new();
+    let mut deskripsi = String::new();
+    let mut deadline_str = String::new();
+    let mut file_lampiran = None;
+
+    while let Some(mut field) = payload
+        .try_next()
+        .await
+        .map_err(actix_web::error::ErrorBadRequest)?
+    {
+        let cd = field.content_disposition().cloned();
+        let field_name = cd.as_ref().and_then(|c| c.get_name()).unwrap_or("");
+
+        if field_name == "id" {
+            let mut val = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                val.extend_from_slice(&chunk);
+            }
+            let text = String::from_utf8(val).unwrap_or_default().trim().to_string();
+            if !text.is_empty() { task_id = Some(text); }
+        } else if field_name == "judul" {
+            let mut val = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                val.extend_from_slice(&chunk);
+            }
+            judul = String::from_utf8(val).unwrap_or_default().trim().to_string();
+        } else if field_name == "deskripsi" {
+            let mut val = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                val.extend_from_slice(&chunk);
+            }
+            deskripsi = String::from_utf8(val).unwrap_or_default().trim().to_string();
+        } else if field_name == "deadline" {
+            let mut val = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                val.extend_from_slice(&chunk);
+            }
+            deadline_str = String::from_utf8(val).unwrap_or_default().trim().to_string();
+        } else if field_name == "file_lampiran" || field_name == "file" {
+            let filename = cd.as_ref().and_then(|c| c.get_filename()).unwrap_or("");
+            if !filename.is_empty() {
+                let ext = Path::new(filename).extension().and_then(|s| s.to_str()).unwrap_or("pdf").to_lowercase();
+                let new_filename = format!("tugas_pdf_{}.{}", Uuid::new_v4(), ext);
+                let filepath = format!("{}/{}", upload_dir, new_filename);
+
+                let mut f = fs::File::create(&filepath).map_err(|e| {
+                    log::error!("Gagal membuat file tugas: {:?}", e);
+                    actix_web::error::ErrorInternalServerError("Gagal menyimpan lampiran PDF")
+                })?;
+
+                while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                    f.write_all(&chunk).map_err(|e| {
+                        log::error!("Gagal menulis file tugas: {:?}", e);
+                        actix_web::error::ErrorInternalServerError("Gagal menyimpan lampiran PDF")
+                    })?;
+                }
+                file_lampiran = Some(format!("{}/{}", upload_dir, new_filename));
+            } else {
+                let mut val = Vec::new();
+                while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                    val.extend_from_slice(&chunk);
+                }
+                let text = String::from_utf8(val).unwrap_or_default().trim().to_string();
+                if !text.is_empty() { file_lampiran = Some(text); }
+            }
+        }
+    }
+
+    if judul.is_empty() || deadline_str.is_empty() {
+        return Err(actix_web::error::ErrorBadRequest("Judul dan deadline wajib diisi"));
+    }
+
+    let parsed_deadline = chrono::NaiveDateTime::parse_from_str(&deadline_str, "%Y-%m-%d %H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(&format!("{} 23:59:59", deadline_str), "%Y-%m-%d %H:%M:%S"))
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(&format!("{}:00", deadline_str.replace("T", " ")), "%Y-%m-%d %H:%M:%S"))
+        .map_err(|_| actix_web::error::ErrorBadRequest("Format deadline tidak valid"))?;
+
+    if let Some(ref tid) = task_id {
         sqlx::query(
-            "UPDATE paskibraka_tugas SET judul = ?, deskripsi = ?, file_lampiran = ?, deadline = ?, updated_at = NOW() WHERE id = ?"
+            "UPDATE paskibraka_tugas SET judul = ?, deskripsi = ?, file_lampiran = COALESCE(?, file_lampiran), deadline = ?, updated_at = NOW() WHERE id = ?"
         )
-        .bind(&body.judul)
-        .bind(&body.deskripsi)
-        .bind(&body.file_lampiran)
+        .bind(&judul)
+        .bind(&deskripsi)
+        .bind(&file_lampiran)
         .bind(parsed_deadline)
-        .bind(task_id)
+        .bind(tid)
         .execute(pool.get_ref())
         .await
         .map_err(|e| {
@@ -1651,14 +1720,14 @@ pub async fn create_or_update_tugas(
             actix_web::error::ErrorInternalServerError("Gagal memperbarui tugas")
         })?;
     } else {
-        let task_id = Uuid::new_v4().to_string();
+        let new_id = Uuid::new_v4().to_string();
         sqlx::query(
             "INSERT INTO paskibraka_tugas (id, judul, deskripsi, file_lampiran, deadline, created_at) VALUES (?, ?, ?, ?, ?, NOW())"
         )
-        .bind(&task_id)
-        .bind(&body.judul)
-        .bind(&body.deskripsi)
-        .bind(&body.file_lampiran)
+        .bind(&new_id)
+        .bind(&judul)
+        .bind(&deskripsi)
+        .bind(&file_lampiran)
         .bind(parsed_deadline)
         .execute(pool.get_ref())
         .await
@@ -1731,7 +1800,7 @@ pub async fn get_paskibraka_informasi(
 pub async fn create_informasi(
     req: HttpRequest,
     pool: web::Data<MySqlPool>,
-    body: web::Json<PaskibrakaInformasiRequest>,
+    mut payload: Multipart,
 ) -> Result<impl Responder, Error> {
     init_paskibraka_tables(pool.get_ref()).await;
     let claims =
@@ -1746,14 +1815,77 @@ pub async fn create_informasi(
         ));
     }
 
+    let upload_dir = "uploads/assets/docs/informasi";
+    if let Err(e) = fs::create_dir_all(upload_dir) {
+        log::error!("Gagal membuat folder informasi: {:?}", e);
+    }
+
+    let mut judul = String::new();
+    let mut konten = String::new();
+    let mut file_lampiran = None;
+
+    while let Some(mut field) = payload
+        .try_next()
+        .await
+        .map_err(actix_web::error::ErrorBadRequest)?
+    {
+        let cd = field.content_disposition().cloned();
+        let field_name = cd.as_ref().and_then(|c| c.get_name()).unwrap_or("");
+
+        if field_name == "judul" {
+            let mut val = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                val.extend_from_slice(&chunk);
+            }
+            judul = String::from_utf8(val).unwrap_or_default().trim().to_string();
+        } else if field_name == "konten" {
+            let mut val = Vec::new();
+            while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                val.extend_from_slice(&chunk);
+            }
+            konten = String::from_utf8(val).unwrap_or_default().trim().to_string();
+        } else if field_name == "file_lampiran" || field_name == "file" {
+            let filename = cd.as_ref().and_then(|c| c.get_filename()).unwrap_or("");
+            if !filename.is_empty() {
+                let ext = Path::new(filename).extension().and_then(|s| s.to_str()).unwrap_or("pdf").to_lowercase();
+                let new_filename = format!("info_pdf_{}.{}", Uuid::new_v4(), ext);
+                let filepath = format!("{}/{}", upload_dir, new_filename);
+
+                let mut f = fs::File::create(&filepath).map_err(|e| {
+                    log::error!("Gagal membuat file info: {:?}", e);
+                    actix_web::error::ErrorInternalServerError("Gagal menyimpan lampiran PDF")
+                })?;
+
+                while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                    f.write_all(&chunk).map_err(|e| {
+                        log::error!("Gagal menulis file info: {:?}", e);
+                        actix_web::error::ErrorInternalServerError("Gagal menyimpan lampiran PDF")
+                    })?;
+                }
+                file_lampiran = Some(format!("{}/{}", upload_dir, new_filename));
+            } else {
+                let mut val = Vec::new();
+                while let Some(chunk) = field.try_next().await.map_err(actix_web::error::ErrorBadRequest)? {
+                    val.extend_from_slice(&chunk);
+                }
+                let text = String::from_utf8(val).unwrap_or_default().trim().to_string();
+                if !text.is_empty() { file_lampiran = Some(text); }
+            }
+        }
+    }
+
+    if judul.is_empty() || konten.is_empty() {
+        return Err(actix_web::error::ErrorBadRequest("Judul dan konten wajib diisi"));
+    }
+
     let info_id = Uuid::new_v4().to_string();
     sqlx::query(
         "INSERT INTO paskibraka_informasi (id, judul, konten, file_lampiran, created_at) VALUES (?, ?, ?, ?, NOW())"
     )
     .bind(&info_id)
-    .bind(&body.judul)
-    .bind(&body.konten)
-    .bind(&body.file_lampiran)
+    .bind(&judul)
+    .bind(&konten)
+    .bind(&file_lampiran)
     .execute(pool.get_ref())
     .await
     .map_err(|e| {
@@ -1918,15 +2050,7 @@ pub async fn upload_pengumpulan_tugas(
         .await
         .map_err(|_| actix_web::error::ErrorInternalServerError("Database error"))?;
 
-    if let Some(t) = task_row {
-        let deadline: chrono::NaiveDateTime = t.get("deadline");
-        let now_naive = chrono::Local::now().naive_local();
-        if now_naive > deadline {
-            return Err(actix_web::error::ErrorBadRequest(
-                "Batas waktu pengumpulan tugas ini telah berakhir.",
-            ));
-        }
-    } else {
+    if task_row.is_none() {
         return Err(actix_web::error::ErrorNotFound("Tugas tidak ditemukan"));
     }
 
