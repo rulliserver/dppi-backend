@@ -2177,6 +2177,8 @@ pub async fn update_paskibraka_profile(
     pool: web::Data<MySqlPool>,
     mut payload: Multipart,
 ) -> Result<impl Responder, Error> {
+    init_paskibraka_tables(pool.get_ref()).await;
+
     let claims =
         auth::verify_jwt(&req).map_err(|e| actix_web::error::ErrorUnauthorized(e.to_string()))?;
 
@@ -2284,24 +2286,23 @@ pub async fn update_paskibraka_profile(
             let filename = cd
                 .as_ref()
                 .and_then(|c| c.get_filename())
-                .unwrap_or("avatar");
+                .unwrap_or("avatar.png");
             let ext = Path::new(filename)
                 .extension()
                 .and_then(|s| s.to_str())
                 .unwrap_or("png")
                 .to_lowercase();
 
-            if ext != "png" && ext != "jpg" && ext != "jpeg" && ext != "webp" {
-                return Err(actix_web::error::ErrorBadRequest(
-                    "Format foto harus PNG, JPG, JPEG, atau WEBP",
-                ));
-            }
+            let safe_ext = match ext.as_str() {
+                "png" | "jpg" | "jpeg" | "webp" => ext,
+                _ => "png".to_string(),
+            };
 
             let new_filename = format!(
                 "avatar_paskibraka_{}_{}.{}",
                 claims.user_id,
                 Uuid::new_v4(),
-                ext
+                safe_ext
             );
             let filepath = format!("{}/{}", upload_dir, new_filename);
 
@@ -2325,50 +2326,58 @@ pub async fn update_paskibraka_profile(
         }
     }
 
-    if let Some(ref new_avatar) = avatar_url {
-        sqlx::query("UPDATE users SET phone = ?, address = ?, nama_sekolah = ?, guru_pembimbing = ?, no_hp_guru_pembimbing = ?, avatar = ? WHERE id = ?")
-            .bind(&phone)
-            .bind(&address)
-            .bind(&nama_sekolah)
-            .bind(&guru_pembimbing)
-            .bind(&no_hp_guru_pembimbing)
-            .bind(new_avatar)
-            .bind(&claims.user_id)
-            .execute(pool.get_ref())
-            .await
-            .map_err(|_| actix_web::error::ErrorInternalServerError("Gagal memperbarui profil"))?;
+    // Resolve id_pdp from users table if not in claims
+    let user_row = sqlx::query("SELECT id_pdp FROM users WHERE id = ?")
+        .bind(&claims.user_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .unwrap_or(None);
 
-        if let Some(ref id_pdp) = claims.id_pdp {
-            let _ = sqlx::query("UPDATE data_capaska SET photo = ?, asal_sekolah = COALESCE(?, asal_sekolah), guru_pembimbing = COALESCE(?, guru_pembimbing), no_hp_guru_pembimbing = COALESCE(?, no_hp_guru_pembimbing) WHERE id = ?")
-                .bind(new_avatar)
-                .bind(&nama_sekolah)
-                .bind(&guru_pembimbing)
-                .bind(&no_hp_guru_pembimbing)
-                .bind(id_pdp)
-                .execute(pool.get_ref())
-                .await;
-        }
-    } else {
-        sqlx::query("UPDATE users SET phone = ?, address = ?, nama_sekolah = ?, guru_pembimbing = ?, no_hp_guru_pembimbing = ? WHERE id = ?")
-            .bind(&phone)
-            .bind(&address)
-            .bind(&nama_sekolah)
-            .bind(&guru_pembimbing)
-            .bind(&no_hp_guru_pembimbing)
-            .bind(&claims.user_id)
-            .execute(pool.get_ref())
-            .await
-            .map_err(|_| actix_web::error::ErrorInternalServerError("Gagal memperbarui profil"))?;
+    let id_pdp: Option<String> = user_row.and_then(|r| r.get("id_pdp"));
+    let target_id_pdp = claims.id_pdp.clone().or(id_pdp);
 
-        if let Some(ref id_pdp) = claims.id_pdp {
-            let _ = sqlx::query("UPDATE data_capaska SET asal_sekolah = COALESCE(?, asal_sekolah), guru_pembimbing = COALESCE(?, guru_pembimbing), no_hp_guru_pembimbing = COALESCE(?, no_hp_guru_pembimbing) WHERE id = ?")
-                .bind(&nama_sekolah)
-                .bind(&guru_pembimbing)
-                .bind(&no_hp_guru_pembimbing)
-                .bind(id_pdp)
-                .execute(pool.get_ref())
-                .await;
-        }
+    // Update users table with COALESCE so None fields retain their existing values
+    sqlx::query(
+        r#"UPDATE users SET 
+            phone = COALESCE(?, phone), 
+            address = COALESCE(?, address), 
+            nama_sekolah = COALESCE(?, nama_sekolah), 
+            guru_pembimbing = COALESCE(?, guru_pembimbing), 
+            no_hp_guru_pembimbing = COALESCE(?, no_hp_guru_pembimbing), 
+            avatar = COALESCE(?, avatar) 
+        WHERE id = ?"#
+    )
+    .bind(&phone)
+    .bind(&address)
+    .bind(&nama_sekolah)
+    .bind(&guru_pembimbing)
+    .bind(&no_hp_guru_pembimbing)
+    .bind(&avatar_url)
+    .bind(&claims.user_id)
+    .execute(pool.get_ref())
+    .await
+    .map_err(|e| {
+        log::error!("Gagal memperbarui profil user di DB: {:?}", e);
+        actix_web::error::ErrorInternalServerError("Gagal memperbarui profil")
+    })?;
+
+    // Synchronize to data_capaska table if linked
+    if let Some(ref pdp_id) = target_id_pdp {
+        let _ = sqlx::query(
+            r#"UPDATE data_capaska SET 
+                photo = COALESCE(?, photo), 
+                asal_sekolah = COALESCE(?, asal_sekolah), 
+                guru_pembimbing = COALESCE(?, guru_pembimbing), 
+                no_hp_guru_pembimbing = COALESCE(?, no_hp_guru_pembimbing) 
+            WHERE id = ?"#
+        )
+        .bind(&avatar_url)
+        .bind(&nama_sekolah)
+        .bind(&guru_pembimbing)
+        .bind(&no_hp_guru_pembimbing)
+        .bind(pdp_id)
+        .execute(pool.get_ref())
+        .await;
     }
 
     Ok(HttpResponse::Ok().json(json!({
